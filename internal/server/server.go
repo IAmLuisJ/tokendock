@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/luisjuarez/tokendock/internal/config"
-	"github.com/luisjuarez/tokendock/internal/keys"
+	"github.com/IAmLuisJ/tokendock/internal/config"
+	"github.com/IAmLuisJ/tokendock/internal/keys"
 )
 
 type server struct {

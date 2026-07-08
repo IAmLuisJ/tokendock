@@ -11,7 +11,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/luisjuarez/tokendock/internal/config"
+	"github.com/IAmLuisJ/tokendock/internal/config"
 )
 
 func (s *server) handleToken(w http.ResponseWriter, r *http.Request) {

@@ -1,4 +1,4 @@
-module github.com/luisjuarez/tokendock
+module github.com/IAmLuisJ/tokendock
 
 go 1.26.5
 

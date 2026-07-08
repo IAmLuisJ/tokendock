@@ -10,8 +10,8 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/luisjuarez/tokendock/internal/config"
-	"github.com/luisjuarez/tokendock/internal/keys"
+	"github.com/IAmLuisJ/tokendock/internal/config"
+	"github.com/IAmLuisJ/tokendock/internal/keys"
 )
 
 func testServer(t *testing.T) (*httptest.Server, *keys.Key, *config.Config) {

@@ -10,7 +10,7 @@ branding:
 inputs:
   image:
     description: TokenDock Docker image to run
-    default: ghcr.io/luisjuarez/tokendock:latest
+    default: ghcr.io/iamluisj/tokendock:latest
   port:
     description: Host port to expose the server on
     default: "8080"

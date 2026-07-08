@@ -16,7 +16,7 @@ test-specific code in your app.
 ## Quickstart
 
 ```sh
-docker run -p 8080:8080 ghcr.io/luisjuarez/tokendock:latest
+docker run -p 8080:8080 ghcr.io/iamluisj/tokendock:latest
 ```
 
 Fetch a token with the built-in demo client:
@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       tokendock:
-        image: ghcr.io/luisjuarez/tokendock:latest
+        image: ghcr.io/iamluisj/tokendock:latest
         ports: ["8080:8080"]
         env:
           TOKENDOCK_ISSUER: http://localhost:8080
@@ -57,7 +57,7 @@ jobs:
 
 ```yaml
 steps:
-  - uses: luisjuarez/tokendock/action@v1
+  - uses: IAmLuisJ/tokendock/action@v1
     id: tokendock
     with:
       client-id: my-service
