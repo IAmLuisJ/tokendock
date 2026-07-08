@@ -184,6 +184,22 @@ func TestClientWithNoScopesAllowsAnyScope(t *testing.T) {
 	}
 }
 
+func TestNoScopesAtAllOmitsScopeEntirely(t *testing.T) {
+	ts, key, _ := testServer(t)
+	form := url.Values{"grant_type": {"client_credentials"}}
+	resp, body := requestToken(t, ts, form, [2]string{"open-client", "open-secret"})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, body = %+v", resp.StatusCode, body)
+	}
+	if body.Scope != "" {
+		t.Errorf("scope = %q, want omitted", body.Scope)
+	}
+	claims := parseToken(t, body.AccessToken, key)
+	if _, present := claims["scope"]; present {
+		t.Errorf("scope claim = %v, want absent", claims["scope"])
+	}
+}
+
 func TestWrongSecretIsInvalidClient(t *testing.T) {
 	ts, _, _ := testServer(t)
 	form := url.Values{"grant_type": {"client_credentials"}}

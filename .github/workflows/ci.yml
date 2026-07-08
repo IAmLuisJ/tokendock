@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test ./...
+
+  dogfood-action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build local image
+        run: docker build -t tokendock:ci .
+
+      - name: Start TokenDock via the composite action
+        id: tokendock
+        uses: ./action
+        with:
+          image: tokendock:ci
+          client-id: ci-client
+          client-secret: ci-secret
+          scopes: read,write
+          audience: my-api
+
+      - name: Fetch and inspect a token
+        run: |
+          set -euo pipefail
+          resp=$(curl -sf -u ci-client:ci-secret \
+            -d grant_type=client_credentials -d 'scope=read write' \
+            "${{ steps.tokendock.outputs.token-endpoint }}")
+          echo "$resp" | jq -e '.token_type == "Bearer"'
+          token=$(echo "$resp" | jq -r .access_token)
+
+          payload=$(echo "$token" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null || true)
+          echo "$payload" | jq -e --arg iss "${{ steps.tokendock.outputs.issuer }}" '.iss == $iss'
+          echo "$payload" | jq -e '.aud == "my-api" and .scope == "read write"'
+
+          kid=$(echo "$token" | cut -d. -f1 | tr '_-' '/+' | base64 -d 2>/dev/null | jq -r .kid || true)
+          curl -sf "${{ steps.tokendock.outputs.jwks-uri }}" | jq -e --arg kid "$kid" '.keys[] | select(.kid == $kid)'

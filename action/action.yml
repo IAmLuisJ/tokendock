@@ -1,0 +1,92 @@
+name: TokenDock
+description: >-
+  Start TokenDock, a fake OAuth 2.0 Authorization Server for CI. Issues
+  RS256-signed JWTs via the client credentials grant, with JWKS and OIDC
+  discovery endpoints for the app under test to validate them.
+branding:
+  icon: anchor
+  color: blue
+
+inputs:
+  image:
+    description: TokenDock Docker image to run
+    default: ghcr.io/luisjuarez/tokendock:latest
+  port:
+    description: Host port to expose the server on
+    default: "8080"
+  issuer:
+    description: Issuer URL embedded in tokens (must match how the app under test reaches the server)
+    default: ""
+  client-id:
+    description: Client ID allowed to request tokens (omit to use the built-in demo client)
+    default: ""
+  client-secret:
+    description: Client secret for client-id
+    default: ""
+  scopes:
+    description: Comma-separated scopes the client may request (empty allows any scope)
+    default: ""
+  audience:
+    description: aud claim for issued tokens
+    default: ""
+  config-file:
+    description: Path to a TokenDock YAML config file (overrides the client-* inputs)
+    default: ""
+
+outputs:
+  issuer:
+    description: Issuer URL of the running server
+    value: ${{ steps.start.outputs.issuer }}
+  token-endpoint:
+    description: OAuth token endpoint URL
+    value: ${{ steps.start.outputs.token-endpoint }}
+  jwks-uri:
+    description: JWKS URL for validating issued tokens
+    value: ${{ steps.start.outputs.jwks-uri }}
+
+runs:
+  using: composite
+  steps:
+    - id: start
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        port="${{ inputs.port }}"
+        issuer="${{ inputs.issuer }}"
+        if [ -z "$issuer" ]; then
+          issuer="http://localhost:${port}"
+        fi
+
+        args=(-d --name tokendock -p "${port}:${port}"
+              -e "TOKENDOCK_PORT=${port}"
+              -e "TOKENDOCK_ISSUER=${issuer}")
+
+        if [ -n "${{ inputs.config-file }}" ]; then
+          args+=(-v "$(realpath "${{ inputs.config-file }}"):/etc/tokendock/config.yaml:ro")
+        elif [ -n "${{ inputs.client-id }}" ]; then
+          args+=(-e "TOKENDOCK_CLIENT_ID=${{ inputs.client-id }}"
+                 -e "TOKENDOCK_CLIENT_SECRET=${{ inputs.client-secret }}")
+          [ -n "${{ inputs.scopes }}" ]   && args+=(-e "TOKENDOCK_SCOPES=${{ inputs.scopes }}")
+          [ -n "${{ inputs.audience }}" ] && args+=(-e "TOKENDOCK_AUDIENCE=${{ inputs.audience }}")
+        fi
+
+        docker run "${args[@]}" "${{ inputs.image }}"
+
+        echo "Waiting for TokenDock to become healthy..."
+        for i in $(seq 1 30); do
+          if curl -sf "http://localhost:${port}/health" > /dev/null; then
+            echo "TokenDock is ready at ${issuer}"
+            {
+              echo "issuer=${issuer}"
+              echo "token-endpoint=${issuer}/token"
+              echo "jwks-uri=${issuer}/.well-known/jwks.json"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          sleep 1
+        done
+
+        echo "TokenDock did not become healthy in time; container logs:" >&2
+        docker logs tokendock >&2 || true
+        exit 1

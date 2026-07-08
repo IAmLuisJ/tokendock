@@ -56,12 +56,15 @@ func (s *server) handleToken(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Pragma", "no-cache")
-	writeJSON(w, http.StatusOK, map[string]any{
+	body := map[string]any{
 		"access_token": token,
 		"token_type":   "Bearer",
 		"expires_in":   client.TokenLifetime,
-		"scope":        strings.Join(scopes, " "),
-	})
+	}
+	if len(scopes) > 0 {
+		body["scope"] = strings.Join(scopes, " ")
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 func (s *server) authenticate(clientID, clientSecret string) *config.Client {
@@ -106,7 +109,9 @@ func (s *server) mintToken(client *config.Client, scopes []string) (string, erro
 	claims["iat"] = now.Unix()
 	claims["exp"] = now.Add(time.Duration(client.TokenLifetime) * time.Second).Unix()
 	claims["jti"] = newJTI()
-	claims["scope"] = strings.Join(scopes, " ")
+	if len(scopes) > 0 {
+		claims["scope"] = strings.Join(scopes, " ")
+	}
 	if client.Audience != "" {
 		claims["aud"] = client.Audience
 	}
