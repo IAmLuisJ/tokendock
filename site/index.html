@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TokenDock — a fake OAuth 2.0 authorization server for CI</title>
+<meta name="description" content="TokenDock issues real RS256-signed JWTs from fake credentials, so your CI can test JWT-protected flows without reaching your real identity provider. ~10MB image, starts in milliseconds.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Allerta+Stencil&family=Archivo:wght@400;500;600;700;800&family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: oklch(95.5% 0.018 85);
+    --paper-deep: oklch(91% 0.03 82);
+    --ink: oklch(27% 0.045 255);
+    --ink-soft: oklch(40% 0.035 255);
+    --rust: oklch(52% 0.17 32);
+    --rope: oklch(62% 0.075 75);
+    --rope-faint: oklch(80% 0.05 78);
+    --stamp: oklch(45% 0.11 255);
+    --code-bg: oklch(30% 0.04 255);
+    --code-ink: oklch(92% 0.02 85);
+    --code-accent: oklch(80% 0.09 75);
+    --hairline: 1px solid var(--rope-faint);
+    --dashed: 1px dashed var(--rope);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Archivo", sans-serif;
+    font-size: clamp(1rem, 0.95rem + 0.25vw, 1.125rem);
+    line-height: 1.6;
+    /* subtle paper grain */
+    background-image:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.45 0 0 0 0 0.38 0 0 0 0 0.28 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .stencil { font-family: "Allerta Stencil", sans-serif; font-weight: 400; }
+  .mono { font-family: "IBM Plex Mono", monospace; }
+
+  a { color: var(--rust); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  a:hover { color: var(--ink); }
+
+  .wrap { max-width: 68rem; margin-inline: auto; padding-inline: clamp(1.25rem, 4vw, 3rem); }
+
+  /* ---------- top strip ---------- */
+  .strip {
+    background: var(--ink);
+    color: var(--paper);
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    padding-block: 0.5rem;
+    display: flex; justify-content: space-between; gap: 1rem;
+    text-transform: uppercase;
+  }
+  .strip a { color: var(--paper); text-decoration: none; border-bottom: 1px dashed var(--rope); }
+  .strip a:hover { color: var(--code-accent); }
+  .strip .berth { opacity: 0.7; }
+
+  /* ---------- hero ---------- */
+  header.hero { padding-block: clamp(3rem, 8vw, 6.5rem) clamp(2.5rem, 6vw, 4.5rem); position: relative; }
+
+  .hero h1 {
+    font-size: clamp(3rem, 11vw, 7.5rem);
+    line-height: 0.95;
+    letter-spacing: 0.01em;
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+  .hero h1 .dock { color: var(--rust); }
+
+  .hero .flag {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.8rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-bottom: 1.2rem;
+  }
+  .hero .flag::before { content: "⚓ "; color: var(--rust); }
+
+  .hero .lede {
+    max-width: 34rem;
+    margin-top: 1.8rem;
+    font-size: clamp(1.1rem, 1rem + 0.6vw, 1.35rem);
+    line-height: 1.5;
+    color: var(--ink-soft);
+  }
+  .hero .lede strong { color: var(--ink); font-weight: 600; }
+
+  .stamp {
+    position: absolute;
+    right: clamp(0.5rem, 4vw, 3rem);
+    top: clamp(2.2rem, 6vw, 4rem);
+    rotate: 7deg;
+    border: 3px double var(--rust);
+    color: var(--rust);
+    border-radius: 4px;
+    padding: 0.5rem 1rem;
+    font-family: "Allerta Stencil", sans-serif;
+    text-transform: uppercase;
+    font-size: clamp(0.7rem, 1.4vw, 0.95rem);
+    letter-spacing: 0.18em;
+    line-height: 1.35;
+    text-align: center;
+    opacity: 0.85;
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='r'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.12' numOctaves='3'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1.6 -0.35'/%3E%3C/filter%3E%3Crect width='200' height='200' fill='%23000' filter='url(%23r)'/%3E%3C/svg%3E");
+    mask-size: 200px;
+  }
+
+  .cta-row { display: flex; flex-wrap: wrap; gap: 1rem 1.5rem; margin-top: 2.4rem; align-items: center; }
+  .btn {
+    display: inline-block;
+    background: var(--ink);
+    color: var(--paper);
+    text-decoration: none;
+    font-weight: 600;
+    padding: 0.8rem 1.6rem;
+    letter-spacing: 0.03em;
+    border: 2px solid var(--ink);
+    transition: background 160ms cubic-bezier(0.22,1,0.36,1), color 160ms cubic-bezier(0.22,1,0.36,1);
+  }
+  .btn:hover { background: transparent; color: var(--ink); }
+  .btn.ghost { background: transparent; color: var(--ink); border-style: dashed; border-width: 1px; padding: 0.85rem 1.6rem; }
+  .btn.ghost:hover { border-color: var(--rust); color: var(--rust); }
+
+  /* ---------- manifest strip ---------- */
+  .manifest {
+    border-top: var(--dashed);
+    border-bottom: var(--dashed);
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  }
+  .manifest > div {
+    padding: 1.1rem 1.25rem;
+    border-right: var(--dashed);
+  }
+  .manifest > div:last-child { border-right: none; }
+  .manifest dt {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--rope);
+  }
+  .manifest dd { font-weight: 700; font-size: 1.15rem; margin-top: 0.15rem; }
+  .manifest dd small { font-weight: 400; color: var(--ink-soft); font-size: 0.85rem; }
+
+  /* ---------- sections ---------- */
+  section { padding-block: clamp(3rem, 7vw, 5.5rem); }
+
+  .kicker {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--rust);
+    margin-bottom: 0.9rem;
+  }
+  .kicker::before { content: "— "; color: var(--rope); }
+
+  h2 {
+    font-size: clamp(1.7rem, 1.3rem + 2vw, 2.6rem);
+    line-height: 1.12;
+    text-transform: uppercase;
+    letter-spacing: 0.015em;
+    max-width: 24ch;
+  }
+
+  /* problem / fix: asymmetric two column */
+  .split { display: grid; grid-template-columns: 5fr 4fr; gap: clamp(2rem, 5vw, 4.5rem); align-items: start; }
+  .split .col p + p { margin-top: 1rem; }
+  .split .col p { color: var(--ink-soft); max-width: 46ch; }
+  .split .col p strong { color: var(--ink); }
+  .note {
+    border-left: 3px solid var(--rust);
+    padding: 0.9rem 1.2rem;
+    margin-top: 1.6rem;
+    background: var(--paper-deep);
+    font-size: 0.95rem;
+    color: var(--ink-soft);
+  }
+  .note b { color: var(--rust); letter-spacing: 0.08em; font-family: "IBM Plex Mono", monospace; font-size: 0.78rem; text-transform: uppercase; }
+
+  /* ---------- how it works: bill of lading ---------- */
+  .lading { list-style: none; counter-reset: step; margin-top: 2.5rem; }
+  .lading li {
+    counter-increment: step;
+    display: grid;
+    grid-template-columns: 4.5rem 16rem 1fr;
+    gap: 1.5rem;
+    padding-block: 1.6rem;
+    border-top: var(--hairline);
+    align-items: baseline;
+  }
+  .lading li:last-child { border-bottom: var(--hairline); }
+  .lading li::before {
+    content: "0" counter(step);
+    font-family: "Allerta Stencil", sans-serif;
+    font-size: 2.2rem;
+    color: var(--rope);
+    line-height: 1;
+  }
+  .lading h3 { font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .lading p { color: var(--ink-soft); font-size: 0.98rem; max-width: 52ch; }
+  .lading code {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.85em;
+    background: var(--paper-deep);
+    padding: 0.1em 0.4em;
+    border: 1px solid var(--rope-faint);
+    white-space: nowrap;
+  }
+
+  /* ---------- quickstart ---------- */
+  .dockside { background: var(--ink); color: var(--code-ink); position: relative; }
+  .dockside::before, .dockside::after {
+    content: "";
+    display: block;
+    height: 14px;
+    background-image: radial-gradient(circle at 7px -3px, transparent 7px, var(--paper) 7.5px);
+    background-size: 21px 14px;
+  }
+  .dockside::after { transform: scaleY(-1); }
+  .dockside .kicker { color: var(--code-accent); }
+  .dockside .kicker::before { color: var(--rope); }
+  .dockside h2 { color: var(--paper); }
+  .dockside .inner { padding-block: clamp(2.5rem, 6vw, 4.5rem); }
+
+  .quay { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(1.5rem, 4vw, 3rem); margin-top: 2.5rem; align-items: start; }
+  .quay > figure { min-width: 0; }
+  .quay figure figcaption {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--code-accent);
+    margin-bottom: 0.7rem;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid oklch(45% 0.04 255);
+    padding: 1.1rem 1.25rem;
+    overflow-x: auto;
+    font-size: 0.83rem;
+    line-height: 1.65;
+  }
+  pre code { font-family: "IBM Plex Mono", monospace; }
+  .c-cmt { color: oklch(62% 0.03 255); font-style: italic; }
+  .c-key { color: var(--code-accent); }
+  .c-str { color: oklch(83% 0.07 140); }
+  .dockside .aside { font-size: 0.92rem; color: oklch(75% 0.03 255); max-width: 60ch; margin-top: 2rem; }
+  .dockside .aside a { color: var(--code-accent); }
+
+  /* ---------- cargo manifest (features) ---------- */
+  .cargo { margin-top: 2.5rem; columns: 2; column-gap: clamp(2rem, 5vw, 4rem); }
+  .cargo li {
+    list-style: none;
+    break-inside: avoid;
+    padding: 1.1rem 0;
+    border-top: var(--dashed);
+  }
+  .cargo h3 { font-size: 1rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  .cargo h3::before { content: "☒ "; color: var(--rust); }
+  .cargo p { color: var(--ink-soft); font-size: 0.95rem; margin-top: 0.25rem; max-width: 40ch; }
+
+  /* ---------- footer ---------- */
+  footer { border-top: 2px solid var(--ink); padding-block: 2.5rem 3.5rem; }
+  footer .cols { display: flex; flex-wrap: wrap; gap: 2rem 4rem; justify-content: space-between; align-items: end; }
+  footer .sig { font-family: "IBM Plex Mono", monospace; font-size: 0.78rem; color: var(--ink-soft); letter-spacing: 0.06em; }
+  footer nav { display: flex; gap: 1.8rem; flex-wrap: wrap; font-size: 0.92rem; }
+
+  /* ---------- load motion ---------- */
+  @media (prefers-reduced-motion: no-preference) {
+    .rise { opacity: 0; translate: 0 14px; animation: rise 700ms cubic-bezier(0.16,1,0.3,1) forwards; }
+    .rise:nth-child(2) { animation-delay: 90ms; }
+    .rise:nth-child(3) { animation-delay: 180ms; }
+    .rise:nth-child(4) { animation-delay: 270ms; }
+    @keyframes rise { to { opacity: 1; translate: 0 0; } }
+  }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 780px) {
+    .split, .quay { grid-template-columns: 1fr; }
+    .cargo { columns: 1; }
+    .lading li { grid-template-columns: 3rem 1fr; }
+    .lading li p { grid-column: 2; }
+    .stamp { position: static; display: inline-block; margin-top: 1.5rem; rotate: -3deg; }
+    .strip .berth { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="strip">
+  <div class="wrap" style="display:flex; justify-content:space-between; gap:1rem; width:100%;">
+    <span class="berth">Berth 8080 · Manifest №&nbsp;RFC-6749</span>
+    <a href="https://github.com/IAmLuisJ/tokendock">Moored at github.com/IAmLuisJ/tokendock ↗</a>
+  </div>
+</div>
+
+<header class="hero wrap">
+  <p class="flag rise">Fake OAuth 2.0 authorization server · for CI</p>
+  <h1 class="stencil rise">Token<span class="dock">dock</span></h1>
+  <div class="stamp" aria-hidden="true">Test double<br>not for production</div>
+  <p class="lede rise">Your pipeline can't reach your real identity provider. TokenDock issues <strong>real RS256-signed JWTs</strong> from fake credentials — so the app under test validates tokens with its normal middleware, and your JWT-protected flows finally run in CI.</p>
+  <div class="cta-row rise">
+    <a class="btn" href="https://github.com/IAmLuisJ/tokendock">View on GitHub</a>
+    <a class="btn ghost mono" href="#quickstart">docker run · 30-second setup</a>
+  </div>
+</header>
+
+<dl class="manifest wrap">
+  <div><dt>Image size</dt><dd>~10 MB <small>distroless</small></dd></div>
+  <div><dt>Cold start</dt><dd>&lt;100 ms</dd></div>
+  <div><dt>Config required</dt><dd>None <small>to first token</small></dd></div>
+  <div><dt>Runtime deps</dt><dd>Zero <small>one static binary</small></dd></div>
+</dl>
+
+<section class="wrap">
+  <div class="split">
+    <div class="col">
+      <p class="kicker">The problem</p>
+      <h2>Auth is where CI testing goes to die</h2>
+    </div>
+    <div class="col">
+      <p>Every service you test in CI expects a bearer token signed by your identity provider — which lives behind a VPN, rate-limits you, or simply shouldn't be handed to a build runner. So teams stub out auth, mark those tests <code class="mono">skip</code>, and ship JWT-handling code that has never actually been exercised.</p>
+      <p><strong>TokenDock replaces the identity provider, not your auth code.</strong> It speaks enough real OAuth 2.0 — client credentials grant, JWKS, OIDC discovery — that your app validates its tokens exactly as it would in production. No test flags. No mocked middleware. No code changes.</p>
+      <div class="note"><b>Honest by design</b> — TokenDock signs whatever you configure with an ephemeral key that dies with the container. It is deliberately useless outside a test run.</div>
+    </div>
+  </div>
+</section>
+
+<section class="wrap" style="padding-top: 0;">
+  <p class="kicker">Bill of lading</p>
+  <h2>Three calls, no ceremony</h2>
+  <ol class="lading">
+    <li>
+      <h3>Berth the container</h3>
+      <p>Add TokenDock to your workflow's <code>services:</code> block or run it anywhere Docker runs. It boots in milliseconds with a built-in demo client, or takes your clients via env vars or YAML.</p>
+    </li>
+    <li>
+      <h3>Request a token</h3>
+      <p>Your service or test calls <code>POST /token</code> with its client ID and secret — the standard client credentials grant, Basic or form-body auth, RFC 6749 errors and all.</p>
+    </li>
+    <li>
+      <h3>Validate like production</h3>
+      <p>The app under test discovers signing keys from <code>/.well-known/jwks.json</code> via OIDC discovery and verifies the RS256 signature — the same code path it runs in production.</p>
+    </li>
+  </ol>
+</section>
+
+<div class="dockside" id="quickstart">
+  <div class="wrap inner">
+    <p class="kicker">Quickstart</p>
+    <h2 class="stencil">Cast off</h2>
+    <div class="quay">
+      <figure>
+        <figcaption>Anywhere Docker runs</figcaption>
+<pre><code><span class="c-cmt"># zero config: demo client included</span>
+docker run -p 8080:8080 ghcr.io/iamluisj/tokendock:latest
+
+<span class="c-cmt"># fetch a signed JWT</span>
+curl -u tokendock:tokendock-secret \
+  -d grant_type=client_credentials \
+  http://localhost:8080/token</code></pre>
+      </figure>
+      <figure>
+        <figcaption>GitHub Actions workflow</figcaption>
+<pre><code><span class="c-key">services:</span>
+  <span class="c-key">tokendock:</span>
+    <span class="c-key">image:</span> <span class="c-str">ghcr.io/iamluisj/tokendock:latest</span>
+    <span class="c-key">ports:</span> [<span class="c-str">"8080:8080"</span>]
+    <span class="c-key">env:</span>
+      <span class="c-key">TOKENDOCK_CLIENT_ID:</span> <span class="c-str">my-service</span>
+      <span class="c-key">TOKENDOCK_CLIENT_SECRET:</span> <span class="c-str">ci-secret</span>
+      <span class="c-key">TOKENDOCK_SCOPES:</span> <span class="c-str">read,write</span>
+      <span class="c-key">TOKENDOCK_AUDIENCE:</span> <span class="c-str">my-api</span></code></pre>
+      </figure>
+    </div>
+    <p class="aside">Prefer a one-liner? The <a href="https://github.com/IAmLuisJ/tokendock/tree/main/action">composite action</a> starts the container, waits for health, and hands your next step the <span class="mono">issuer</span>, <span class="mono">token-endpoint</span>, and <span class="mono">jwks-uri</span> as outputs.</p>
+  </div>
+</div>
+
+<section class="wrap">
+  <p class="kicker">Cargo manifest</p>
+  <h2>What's in the hold</h2>
+  <ul class="cargo">
+    <li>
+      <h3>Zero-config first token</h3>
+      <p>Starts with a demo client and a loud warning. Real clients come later; a working token comes in 30 seconds.</p>
+    </li>
+    <li>
+      <h3>Layered configuration</h3>
+      <p>Defaults, then YAML file, then env vars — later wins. Single-client setups need no file at all.</p>
+    </li>
+    <li>
+      <h3>Custom claims per client</h3>
+      <p>Audience, subject, lifetime, and arbitrary claims like <code class="mono">roles</code> — so you can test authorization logic, not just authentication.</p>
+    </li>
+    <li>
+      <h3>Standards-shaped surface</h3>
+      <p>Client credentials grant, OIDC discovery, JWKS with proper <code class="mono">kid</code>, RFC 6749 error responses. Your JWT library already understands it.</p>
+    </li>
+    <li>
+      <h3>Ephemeral keys by default</h3>
+      <p>A fresh RSA-2048 keypair per start — nothing to leak, nothing to rotate. Mount a PEM if you need reproducibility.</p>
+    </li>
+    <li>
+      <h3>Built for the runner</h3>
+      <p>Static Go binary on distroless, amd64 + arm64, Docker HEALTHCHECK built into the binary. Works in GitHub Actions, GitLab CI, and docker-compose alike.</p>
+    </li>
+  </ul>
+</section>
+
+<footer class="wrap">
+  <div class="cols">
+    <p class="sig">TOKENDOCK · MIT LICENSE<br>SIGNED — THE HARBOURMASTER ⚓</p>
+    <nav>
+      <a href="https://github.com/IAmLuisJ/tokendock">Repository</a>
+      <a href="https://github.com/IAmLuisJ/tokendock#configuration">Configuration docs</a>
+      <a href="https://github.com/IAmLuisJ/tokendock/blob/main/docs/design/2026-07-08-tokendock-design.md">Design spec</a>
+      <a href="https://github.com/IAmLuisJ/tokendock/issues">Report an issue</a>
+    </nav>
+  </div>
+</footer>
+
+</body>
+</html>
