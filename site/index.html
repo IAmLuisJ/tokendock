@@ -337,7 +337,7 @@
 </header>
 
 <dl class="manifest wrap">
-  <div><dt>Image size</dt><dd>~4 MB <small>distroless</small></dd></div>
+  <div><dt>Image size</dt><dd>~4 MB <small>no OS, just the binary</small></dd></div>
   <div><dt>Cold start</dt><dd>&lt;100 ms</dd></div>
   <div><dt>Config required</dt><dd>None <small>to first token</small></dd></div>
   <div><dt>Runtime deps</dt><dd>Zero <small>one static binary</small></dd></div>
@@ -434,7 +434,7 @@ curl -u tokendock:tokendock-secret \
     </li>
     <li>
       <h3>Built for the runner</h3>
-      <p>Static Go binary on distroless, amd64 + arm64, Docker HEALTHCHECK built into the binary. Works in GitHub Actions, GitLab CI, and docker-compose alike.</p>
+      <p>A static Go binary in a bare container — no shell, no OS packages. amd64 + arm64, Docker HEALTHCHECK built into the binary. Works in GitHub Actions, GitLab CI, and docker-compose alike.</p>
     </li>
   </ul>
 </section>
@@ -451,7 +451,7 @@ curl -u tokendock:tokendock-secret \
         <tr><th scope="col">Line item</th><th scope="col">TokenDock</th><th scope="col">mock-oauth2-server</th></tr>
       </thead>
       <tbody>
-        <tr><th scope="row">Runtime &amp; image</th><td class="td-us">~4 MB static Go binary <small>distroless</small></td><td>~200 MB JVM image <small>Kotlin</small></td></tr>
+        <tr><th scope="row">Runtime &amp; image</th><td class="td-us">~4 MB static Go binary <small>no OS layer</small></td><td>~200 MB JVM image <small>Kotlin</small></td></tr>
         <tr><th scope="row">Cold start</th><td class="td-us">Milliseconds</td><td>Seconds <small>JVM startup</small></td></tr>
         <tr><th scope="row">Grant types</th><td class="td-us">Client credentials only <small>deliberately</small></td><td>Authorization code, token exchange, JWT bearer, refresh &amp; more</td></tr>
         <tr><th scope="row">Interactive login page</th><td class="td-us">None</td><td>Yes <small>for browser-driven E2E tests</small></td></tr>

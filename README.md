@@ -135,6 +135,33 @@ Issued tokens are RS256 JWTs with `iss`, `sub`, `aud`, `exp`, `iat`, `jti`,
 `scope`, and any custom claims from the client's config. Errors follow RFC 6749
 (`invalid_client`, `invalid_scope`, `unsupported_grant_type`, `invalid_request`).
 
+## TokenDock vs. mock-oauth2-server
+
+[navikt/mock-oauth2-server](https://github.com/navikt/mock-oauth2-server) is the
+established tool in this space — mature, capable, and the right choice for
+plenty of teams. An honest comparison:
+
+| | TokenDock | mock-oauth2-server |
+|---|---|---|
+| Runtime & image | ~4 MB static Go binary | ~200 MB JVM image (Kotlin) |
+| Cold start | Milliseconds | Seconds (JVM startup) |
+| Grant types | Client credentials only, deliberately | Authorization code, token exchange, JWT bearer, refresh & more |
+| Interactive login page | None | Yes — for browser-driven E2E tests |
+| Embed in test code | Container only | JVM library, JUnit-friendly |
+| Issuers | One per container | Multiple per instance |
+| Configuration | Zero-config default, then env vars or YAML | JSON or programmatic API |
+| CI wrapper | Composite GitHub Action with health-wait and outputs | — |
+
+**Choose TokenDock when** you're testing machine-to-machine bearer tokens,
+want a service container that's ready before your app finishes booting, aren't
+on the JVM, or would rather declare clients in a few env vars than maintain
+config code.
+
+**Choose mock-oauth2-server when** your E2E tests drive a browser through a
+real login redirect, you need authorization code flow / token exchange /
+refresh tokens, you want the server embedded in your JUnit lifecycle, or you
+need several issuers from one instance.
+
 ## Development
 
 ```sh
