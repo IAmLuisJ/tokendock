@@ -6,7 +6,7 @@ your application already uses to validate tokens — so JWT-protected flows work
 in CI without reaching your real authorization server, and without any
 test-specific code in your app.
 
-- **Tiny and instant**: single static Go binary in a distroless image (~10MB, starts in milliseconds)
+- **Tiny and instant**: single static Go binary in a distroless image (~4MB, starts in milliseconds)
 - **Zero-config**: starts with a built-in demo client; add real clients via env vars or YAML
 - **Standards-shaped**: `/token`, `/.well-known/openid-configuration`, `/.well-known/jwks.json`, RFC 6749 errors
 
@@ -129,6 +129,7 @@ configured issuer, and OIDC discovery URLs are derived from it. Set
 | `GET /.well-known/openid-configuration` | OIDC discovery document |
 | `GET /.well-known/jwks.json` | Public signing keys |
 | `GET /health` | Readiness probe (also `tokendock -healthcheck` for Docker HEALTHCHECK) |
+| `GET /heartbeat` | Alias of `/health`, for tooling that expects a heartbeat path |
 
 Issued tokens are RS256 JWTs with `iss`, `sub`, `aud`, `exp`, `iat`, `jti`,
 `scope`, and any custom claims from the client's config. Errors follow RFC 6749

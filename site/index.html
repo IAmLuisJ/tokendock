@@ -270,6 +270,26 @@
   .cargo h3::before { content: "☒ "; color: var(--rust); }
   .cargo p { color: var(--ink-soft); font-size: 0.95rem; margin-top: 0.25rem; max-width: 40ch; }
 
+  /* ---------- harbor traffic (comparison) ---------- */
+  .compare-scroll { overflow-x: auto; margin-top: 2.5rem; }
+  table.compare { border-collapse: collapse; width: 100%; min-width: 38rem; font-size: 0.95rem; }
+  .compare caption { text-align: left; font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--rope); padding-bottom: 0.8rem; }
+  .compare th, .compare td { text-align: left; padding: 0.75rem 1rem 0.75rem 0; border-top: var(--dashed); vertical-align: top; }
+  .compare thead th { border-top: none; font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-soft); padding-bottom: 0.6rem; }
+  .compare thead th:first-child { color: var(--rope); }
+  .compare tbody th { font-weight: 500; color: var(--ink-soft); font-size: 0.88rem; width: 11rem; }
+  .compare td { font-weight: 500; }
+  .compare td.td-us { color: var(--rust); }
+  .compare td small { display: block; font-weight: 400; color: var(--ink-soft); }
+  .routes { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(1.5rem, 4vw, 3rem); margin-top: 2.8rem; }
+  .routes h3 { font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.06em; padding-bottom: 0.6rem; border-bottom: 2px solid var(--ink); }
+  .routes .them h3 { border-color: var(--rope); }
+  .routes ul { list-style: none; margin-top: 0.9rem; }
+  .routes li { padding: 0.45rem 0 0.45rem 1.4rem; position: relative; color: var(--ink-soft); font-size: 0.95rem; }
+  .routes li::before { content: "→"; position: absolute; left: 0; color: var(--rust); }
+  .routes .them li::before { color: var(--rope); }
+  @media (max-width: 780px) { .routes { grid-template-columns: 1fr; } }
+
   /* ---------- footer ---------- */
   footer { border-top: 2px solid var(--ink); padding-block: 2.5rem 3.5rem; }
   footer .cols { display: flex; flex-wrap: wrap; gap: 2rem 4rem; justify-content: space-between; align-items: end; }
@@ -317,7 +337,7 @@
 </header>
 
 <dl class="manifest wrap">
-  <div><dt>Image size</dt><dd>~10 MB <small>distroless</small></dd></div>
+  <div><dt>Image size</dt><dd>~4 MB <small>distroless</small></dd></div>
   <div><dt>Cold start</dt><dd>&lt;100 ms</dd></div>
   <div><dt>Config required</dt><dd>None <small>to first token</small></dd></div>
   <div><dt>Runtime deps</dt><dd>Zero <small>one static binary</small></dd></div>
@@ -417,6 +437,52 @@ curl -u tokendock:tokendock-secret \
       <p>Static Go binary on distroless, amd64 + arm64, Docker HEALTHCHECK built into the binary. Works in GitHub Actions, GitLab CI, and docker-compose alike.</p>
     </li>
   </ul>
+</section>
+
+<section class="wrap" style="padding-top: 0;">
+  <p class="kicker">Harbor traffic</p>
+  <h2>Not the only ship in port</h2>
+  <p style="max-width: 52ch; color: var(--ink-soft); margin-top: 1rem;">The established vessel here is <a href="https://github.com/navikt/mock-oauth2-server">navikt/mock-oauth2-server</a> — mature, capable, and the right choice for plenty of crews. Here's an honest manifest of the differences.</p>
+
+  <div class="compare-scroll">
+    <table class="compare">
+      <caption>Comparative manifest</caption>
+      <thead>
+        <tr><th scope="col">Line item</th><th scope="col">TokenDock</th><th scope="col">mock-oauth2-server</th></tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">Runtime &amp; image</th><td class="td-us">~4 MB static Go binary <small>distroless</small></td><td>~200 MB JVM image <small>Kotlin</small></td></tr>
+        <tr><th scope="row">Cold start</th><td class="td-us">Milliseconds</td><td>Seconds <small>JVM startup</small></td></tr>
+        <tr><th scope="row">Grant types</th><td class="td-us">Client credentials only <small>deliberately</small></td><td>Authorization code, token exchange, JWT bearer, refresh &amp; more</td></tr>
+        <tr><th scope="row">Interactive login page</th><td class="td-us">None</td><td>Yes <small>for browser-driven E2E tests</small></td></tr>
+        <tr><th scope="row">Embed in test code</th><td class="td-us">Container only</td><td>JVM library <small>JUnit-friendly</small></td></tr>
+        <tr><th scope="row">Issuers</th><td class="td-us">One per container</td><td>Multiple per instance</td></tr>
+        <tr><th scope="row">Configuration</th><td class="td-us">Zero-config default, then env vars or YAML</td><td>JSON or programmatic API</td></tr>
+        <tr><th scope="row">CI wrapper</th><td class="td-us">Composite GitHub Action <small>health-wait + outputs</small></td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="routes">
+    <div class="us">
+      <h3>Sail with TokenDock when…</h3>
+      <ul>
+        <li>You're testing machine-to-machine bearer tokens — services calling services</li>
+        <li>You want a service container that's ready before your app finishes booting</li>
+        <li>Your stack isn't JVM and a library-mode server buys you nothing</li>
+        <li>You'd rather declare clients in six lines of env vars than maintain a config API</li>
+      </ul>
+    </div>
+    <div class="them">
+      <h3>Sail with mock-oauth2-server when…</h3>
+      <ul>
+        <li>Your E2E tests drive a browser through a real login redirect</li>
+        <li>You need authorization code flow, token exchange, or refresh tokens</li>
+        <li>You're on the JVM and want the server embedded in your JUnit lifecycle</li>
+        <li>You need several issuers from one instance</li>
+      </ul>
+    </div>
+  </div>
 </section>
 
 <footer class="wrap">

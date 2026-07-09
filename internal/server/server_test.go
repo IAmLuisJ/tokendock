@@ -332,3 +332,24 @@ func TestHealth(t *testing.T) {
 		t.Errorf("status = %d, want 200", resp.StatusCode)
 	}
 }
+
+func TestHeartbeat(t *testing.T) {
+	ts, _, _ := testServer(t)
+	resp, err := http.Get(ts.URL + "/heartbeat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if body.Status != "ok" {
+		t.Errorf("status field = %q, want ok", body.Status)
+	}
+}

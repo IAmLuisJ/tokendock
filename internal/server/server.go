@@ -23,6 +23,7 @@ func New(cfg *config.Config, key *keys.Key) http.Handler {
 	mux.HandleFunc("GET /.well-known/openid-configuration", s.handleDiscovery)
 	mux.HandleFunc("GET /.well-known/jwks.json", s.handleJWKS)
 	mux.HandleFunc("GET /health", s.handleHealth)
+	mux.HandleFunc("GET /heartbeat", s.handleHealth)
 	return mux
 }
 
