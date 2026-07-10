@@ -21,7 +21,7 @@ inputs:
     description: Client ID allowed to request tokens (omit to use the built-in demo client)
     default: ""
   client-secret:
-    description: Client secret for client-id
+    description: Client secret for client-id (omit to accept any secret, so the real one never enters CI)
     default: ""
   scopes:
     description: Comma-separated scopes the client may request (empty allows any scope)

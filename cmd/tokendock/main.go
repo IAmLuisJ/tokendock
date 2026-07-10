@@ -80,7 +80,11 @@ func logStartup(cfg *config.Config, key *keys.Key) {
 		if len(c.Scopes) > 0 {
 			scopes = strings.Join(c.Scopes, " ")
 		}
-		log.Printf("client %q (scopes: %s)", c.ClientID, scopes)
+		if c.ClientSecret == "" {
+			log.Printf("client %q (scopes: %s) — no secret configured, ANY secret accepted", c.ClientID, scopes)
+		} else {
+			log.Printf("client %q (scopes: %s)", c.ClientID, scopes)
+		}
 	}
 	if cfg.DemoClient {
 		log.Printf("WARNING: no clients configured — using built-in demo client %q / %q. "+

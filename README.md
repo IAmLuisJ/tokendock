@@ -83,7 +83,7 @@ Three layers, later wins: **defaults → YAML file → environment variables**.
 |---|---|
 | `TOKENDOCK_ISSUER` | Issuer URL embedded in tokens (default `http://localhost:<port>`) |
 | `TOKENDOCK_PORT` | Listen port (default `8080`) |
-| `TOKENDOCK_CLIENT_ID` / `TOKENDOCK_CLIENT_SECRET` | Define a client |
+| `TOKENDOCK_CLIENT_ID` / `TOKENDOCK_CLIENT_SECRET` | Define a client (omit the secret to accept **any** secret for that client ID) |
 | `TOKENDOCK_SCOPES` | Comma-separated scopes the client may request |
 | `TOKENDOCK_AUDIENCE` | `aud` claim for issued tokens |
 | `TOKENDOCK_SIGNING_KEY` | Path to an RSA private key PEM (default: ephemeral key per start) |
@@ -99,7 +99,7 @@ port: 8080
 # signing_key: /keys/private.pem   # optional; ephemeral if omitted
 clients:
   - client_id: my-service
-    client_secret: ci-secret
+    client_secret: ci-secret  # omit to accept ANY secret — CI never needs the real one
     scopes: [read, write]      # empty/omitted = any scope allowed
     audience: my-api
     subject: my-service        # defaults to client_id
@@ -111,6 +111,11 @@ clients:
 
 If no clients are configured anywhere, TokenDock starts with the demo client
 `tokendock` / `tokendock-secret` (any scope allowed) and logs a loud warning.
+
+**Secretless clients**: a client configured with only a `client_id` accepts any
+secret (including none). Your app keeps sending whatever credential it normally
+sends — TokenDock issues the token either way, and your real secret never
+enters CI. The startup log flags these clients loudly.
 
 ### ⚠️ The issuer URL must match
 

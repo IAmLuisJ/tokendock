@@ -38,6 +38,11 @@ func testServer(t *testing.T) (*httptest.Server, *keys.Key, *config.Config) {
 				Subject:       "open-client",
 				TokenLifetime: 3600,
 			},
+			{
+				ClientID:      "secretless",
+				Subject:       "secretless",
+				TokenLifetime: 3600,
+			},
 		},
 	}
 	ts := httptest.NewServer(New(cfg, key))
@@ -197,6 +202,54 @@ func TestNoScopesAtAllOmitsScopeEntirely(t *testing.T) {
 	claims := parseToken(t, body.AccessToken, key)
 	if _, present := claims["scope"]; present {
 		t.Errorf("scope claim = %v, want absent", claims["scope"])
+	}
+}
+
+func TestSecretlessClientAcceptsAnySecret(t *testing.T) {
+	ts, key, _ := testServer(t)
+	form := url.Values{"grant_type": {"client_credentials"}}
+	for _, secret := range []string{"anything", "wrong", "hunter2"} {
+		resp, body := requestToken(t, ts, form, [2]string{"secretless", secret})
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("secret %q: status = %d, body = %+v", secret, resp.StatusCode, body)
+		}
+		claims := parseToken(t, body.AccessToken, key)
+		if claims["sub"] != "secretless" {
+			t.Errorf("sub = %v", claims["sub"])
+		}
+	}
+}
+
+func TestSecretlessClientAcceptsFormAuthWithoutSecret(t *testing.T) {
+	ts, _, _ := testServer(t)
+	form := url.Values{
+		"grant_type": {"client_credentials"},
+		"client_id":  {"secretless"},
+	}
+	resp, body := requestToken(t, ts, form, [2]string{})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, body = %+v", resp.StatusCode, body)
+	}
+	if body.AccessToken == "" {
+		t.Error("access_token empty")
+	}
+}
+
+func TestSecretlessClientStillRequiresKnownClientID(t *testing.T) {
+	ts, _, _ := testServer(t)
+	form := url.Values{"grant_type": {"client_credentials"}}
+	resp, body := requestToken(t, ts, form, [2]string{"not-configured", "whatever"})
+	if resp.StatusCode != http.StatusUnauthorized || body.Error != "invalid_client" {
+		t.Errorf("status = %d, error = %q — unknown client must still be rejected", resp.StatusCode, body.Error)
+	}
+}
+
+func TestClientWithSecretStillEnforcesIt(t *testing.T) {
+	ts, _, _ := testServer(t)
+	form := url.Values{"grant_type": {"client_credentials"}}
+	resp, body := requestToken(t, ts, form, [2]string{"my-service", ""})
+	if resp.StatusCode != http.StatusUnauthorized || body.Error != "invalid_client" {
+		t.Errorf("status = %d, error = %q — empty secret must not bypass a configured secret", resp.StatusCode, body.Error)
 	}
 }
 

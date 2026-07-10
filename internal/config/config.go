@@ -82,9 +82,8 @@ func Load(path string, env EnvLookup) (*Config, error) {
 		if c.ClientID == "" {
 			return nil, fmt.Errorf("client %d: client_id is required", i)
 		}
-		if c.ClientSecret == "" {
-			return nil, fmt.Errorf("client %q: client_secret is required", c.ClientID)
-		}
+		// An empty ClientSecret is allowed: that client accepts any secret,
+		// so CI never needs the real one. The server logs this at startup.
 		if c.Subject == "" {
 			c.Subject = c.ClientID
 		}

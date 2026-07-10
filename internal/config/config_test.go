@@ -176,13 +176,36 @@ port: 9000
 	}
 }
 
-func TestClientMissingSecretIsError(t *testing.T) {
+func TestClientWithoutSecretIsSecretless(t *testing.T) {
 	path := writeTempConfig(t, `
 clients:
-  - client_id: broken
+  - client_id: trusting
 `)
-	if _, err := Load(path, noEnv); err == nil {
-		t.Error("want error for client without secret, got nil")
+	cfg, err := Load(path, noEnv)
+	if err != nil {
+		t.Fatalf("client without secret should load, got error: %v", err)
+	}
+	c := cfg.Clients[0]
+	if c.ClientSecret != "" {
+		t.Errorf("ClientSecret = %q, want empty (secretless)", c.ClientSecret)
+	}
+	if c.Subject != "trusting" || c.TokenLifetime != 3600 {
+		t.Errorf("defaults not applied to secretless client: %+v", c)
+	}
+}
+
+func TestEnvClientWithoutSecretIsSecretless(t *testing.T) {
+	cfg, err := Load("", envFrom(map[string]string{
+		"TOKENDOCK_CLIENT_ID": "env-trusting",
+	}))
+	if err != nil {
+		t.Fatalf("env client without secret should load, got error: %v", err)
+	}
+	if len(cfg.Clients) != 1 || cfg.Clients[0].ClientID != "env-trusting" {
+		t.Fatalf("clients = %+v", cfg.Clients)
+	}
+	if cfg.DemoClient {
+		t.Error("DemoClient = true, want false")
 	}
 }
 
