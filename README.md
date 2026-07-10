@@ -73,6 +73,44 @@ steps:
 The action starts the container, waits for it to be healthy, and exposes
 `issuer`, `token-endpoint`, and `jwks-uri` outputs.
 
+## Docker Compose
+
+Add TokenDock as a sibling service in your existing `docker-compose.yml`. The
+image's built-in HEALTHCHECK means `depends_on: condition: service_healthy`
+just works — your app won't start until tokens are available:
+
+```yaml
+services:
+  tokendock:
+    image: ghcr.io/iamluisj/tokendock:latest
+    environment:
+      # Other containers reach it by service name, so the issuer must match:
+      TOKENDOCK_ISSUER: http://tokendock:8080
+      TOKENDOCK_CLIENT_ID: my-service
+      # no TOKENDOCK_CLIENT_SECRET -> any secret is accepted
+      TOKENDOCK_AUDIENCE: my-api
+    ports: ["8080:8080"]   # optional: only if the host also needs tokens
+
+  my-app:
+    build: .
+    depends_on:
+      tokendock:
+        condition: service_healthy
+    environment:
+      # Point your app's normal JWT/OIDC validation at TokenDock:
+      OIDC_ISSUER: http://tokendock:8080
+```
+
+For multiple clients or custom claims, mount a config file instead of the
+environment variables:
+
+```yaml
+  tokendock:
+    image: ghcr.io/iamluisj/tokendock:latest
+    volumes:
+      - ./tokendock.yaml:/etc/tokendock/config.yaml:ro
+```
+
 ## Configuration
 
 Three layers, later wins: **defaults → YAML file → environment variables**.
