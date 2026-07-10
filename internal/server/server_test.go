@@ -348,7 +348,7 @@ func TestOpenIDConfiguration(t *testing.T) {
 		t.Errorf("jwks_uri = %v", doc["jwks_uri"])
 	}
 	grants, _ := doc["grant_types_supported"].([]any)
-	if len(grants) != 1 || grants[0] != "client_credentials" {
+	if len(grants) != 2 || grants[0] != "client_credentials" || grants[1] != "urn:ietf:params:oauth:grant-type:token-exchange" {
 		t.Errorf("grant_types_supported = %v", doc["grant_types_supported"])
 	}
 }

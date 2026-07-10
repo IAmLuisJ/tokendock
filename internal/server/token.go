@@ -34,35 +34,50 @@ func (s *server) handleToken(w http.ResponseWriter, r *http.Request) {
 
 	switch grantType := r.PostFormValue("grant_type"); grantType {
 	case "client_credentials":
+		s.handleClientCredentials(w, r, client)
+	case grantTypeTokenExchange:
+		s.handleTokenExchange(w, r, client)
 	case "":
 		writeOAuthError(w, http.StatusBadRequest, "invalid_request", "grant_type is required")
-		return
 	default:
-		writeOAuthError(w, http.StatusBadRequest, "unsupported_grant_type", "only client_credentials is supported")
-		return
+		writeOAuthError(w, http.StatusBadRequest, "unsupported_grant_type", "supported: client_credentials, "+grantTypeTokenExchange)
 	}
+}
 
+func (s *server) handleClientCredentials(w http.ResponseWriter, r *http.Request, client *config.Client) {
 	scopes, ok := grantScopes(client, r.PostFormValue("scope"))
 	if !ok {
 		writeOAuthError(w, http.StatusBadRequest, "invalid_scope", "requested scope not allowed for this client")
 		return
 	}
 
-	token, err := s.mintToken(client, scopes)
+	token, err := s.mintToken(tokenSpec{
+		subject:  client.Subject,
+		audience: client.Audience,
+		lifetime: client.TokenLifetime,
+		scopes:   scopes,
+		claims:   client.Claims,
+	})
 	if err != nil {
 		writeOAuthError(w, http.StatusInternalServerError, "server_error", "failed to sign token")
 		return
 	}
+	writeTokenResponse(w, token, client.TokenLifetime, scopes, nil)
+}
 
+func writeTokenResponse(w http.ResponseWriter, token string, lifetime int, scopes []string, extra map[string]any) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Pragma", "no-cache")
 	body := map[string]any{
 		"access_token": token,
 		"token_type":   "Bearer",
-		"expires_in":   client.TokenLifetime,
+		"expires_in":   lifetime,
 	}
 	if len(scopes) > 0 {
 		body["scope"] = strings.Join(scopes, " ")
+	}
+	for k, v := range extra {
+		body[k] = v
 	}
 	writeJSON(w, http.StatusOK, body)
 }
@@ -101,22 +116,35 @@ func grantScopes(client *config.Client, requested string) ([]string, bool) {
 	return scopes, true
 }
 
-func (s *server) mintToken(client *config.Client, scopes []string) (string, error) {
+// tokenSpec is everything mintToken needs; grant handlers assemble it.
+type tokenSpec struct {
+	subject  string
+	audience string
+	lifetime int // seconds
+	scopes   []string
+	claims   map[string]any // custom claims, already merged by the caller
+	act      map[string]any // RFC 8693 actor, nil when not delegating
+}
+
+func (s *server) mintToken(spec tokenSpec) (string, error) {
 	now := time.Now()
 	claims := jwt.MapClaims{}
-	for k, v := range client.Claims {
+	for k, v := range spec.claims {
 		claims[k] = v
 	}
 	claims["iss"] = s.cfg.Issuer
-	claims["sub"] = client.Subject
+	claims["sub"] = spec.subject
 	claims["iat"] = now.Unix()
-	claims["exp"] = now.Add(time.Duration(client.TokenLifetime) * time.Second).Unix()
+	claims["exp"] = now.Add(time.Duration(spec.lifetime) * time.Second).Unix()
 	claims["jti"] = newJTI()
-	if len(scopes) > 0 {
-		claims["scope"] = strings.Join(scopes, " ")
+	if len(spec.scopes) > 0 {
+		claims["scope"] = strings.Join(spec.scopes, " ")
 	}
-	if client.Audience != "" {
-		claims["aud"] = client.Audience
+	if spec.audience != "" {
+		claims["aud"] = spec.audience
+	}
+	if spec.act != nil {
+		claims["act"] = spec.act
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)

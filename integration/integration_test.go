@@ -72,6 +72,67 @@ func TestEndToEndTokenValidationViaJWKS(t *testing.T) {
 	}
 }
 
+// TestEndToEndTokenExchange proves the delegation flow: obtain a token via
+// client_credentials, exchange it (RFC 8693) for a new token with an actor,
+// and validate the result using only the JWKS endpoint.
+func TestEndToEndTokenExchange(t *testing.T) {
+	cfg, err := config.Load("", func(string) (string, bool) { return "", false })
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := keys.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(server.New(cfg, key))
+	defer ts.Close()
+
+	fetchToken := func(form url.Values) string {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/token", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.SetBasicAuth(config.DemoClientID, config.DemoClientSecret)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("token request status = %d", resp.StatusCode)
+		}
+		var tr struct {
+			AccessToken string `json:"access_token"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
+			t.Fatal(err)
+		}
+		return tr.AccessToken
+	}
+
+	subject := fetchToken(url.Values{"grant_type": {"client_credentials"}})
+	exchanged := fetchToken(url.Values{
+		"grant_type":    {"urn:ietf:params:oauth:grant-type:token-exchange"},
+		"subject_token": {subject},
+		"actor_token":   {subject},
+	})
+
+	claims := jwt.MapClaims{}
+	_, err = jwt.ParseWithClaims(exchanged, claims, func(tok *jwt.Token) (any, error) {
+		kid, _ := tok.Header["kid"].(string)
+		return fetchJWKSKey(ts.URL+"/.well-known/jwks.json", kid)
+	})
+	if err != nil {
+		t.Fatalf("exchanged token failed validation against JWKS: %v", err)
+	}
+	if claims["sub"] != config.DemoClientID {
+		t.Errorf("sub = %v, want %v (carried from subject token)", claims["sub"], config.DemoClientID)
+	}
+	act, ok := claims["act"].(map[string]any)
+	if !ok || act["sub"] != config.DemoClientID {
+		t.Errorf("act = %v, want {sub: %v}", claims["act"], config.DemoClientID)
+	}
+}
+
 // fetchJWKSKey resolves a public key by kid from a live JWKS endpoint,
 // independent of the keys package's own encoding.
 func fetchJWKSKey(jwksURL, kid string) (*rsa.PublicKey, error) {

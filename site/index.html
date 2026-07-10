@@ -426,7 +426,7 @@ curl -u tokendock:tokendock-secret \
     </li>
     <li>
       <h3>Standards-shaped surface</h3>
-      <p>Client credentials grant, OIDC discovery, JWKS with proper <code class="mono">kid</code>, RFC 6749 error responses. Your JWT library already understands it.</p>
+      <p>Client credentials and RFC 8693 token exchange grants, OIDC discovery, JWKS with proper <code class="mono">kid</code>, RFC 6749 error responses. Your JWT library already understands it.</p>
     </li>
     <li>
       <h3>Ephemeral keys by default</h3>
@@ -453,7 +453,7 @@ curl -u tokendock:tokendock-secret \
       <tbody>
         <tr><th scope="row">Runtime &amp; image</th><td class="td-us">~4 MB static Go binary <small>no OS layer</small></td><td>~200 MB JVM image <small>Kotlin</small></td></tr>
         <tr><th scope="row">Cold start</th><td class="td-us">Milliseconds</td><td>Seconds <small>JVM startup</small></td></tr>
-        <tr><th scope="row">Grant types</th><td class="td-us">Client credentials only <small>deliberately</small></td><td>Authorization code, token exchange, JWT bearer, refresh &amp; more</td></tr>
+        <tr><th scope="row">Grant types</th><td class="td-us">Client credentials + token exchange <small>RFC 8693</small></td><td>Authorization code, token exchange, JWT bearer, refresh &amp; more</td></tr>
         <tr><th scope="row">Interactive login page</th><td class="td-us">None</td><td>Yes <small>for browser-driven E2E tests</small></td></tr>
         <tr><th scope="row">Embed in test code</th><td class="td-us">Container only</td><td>JVM library <small>JUnit-friendly</small></td></tr>
         <tr><th scope="row">Issuers</th><td class="td-us">One per container</td><td>Multiple per instance</td></tr>
@@ -477,7 +477,7 @@ curl -u tokendock:tokendock-secret \
       <h3>Sail with mock-oauth2-server when…</h3>
       <ul>
         <li>Your E2E tests drive a browser through a real login redirect</li>
-        <li>You need authorization code flow, token exchange, or refresh tokens</li>
+        <li>You need authorization code flow or refresh tokens</li>
         <li>You're on the JVM and want the server embedded in your JUnit lifecycle</li>
         <li>You need several issuers from one instance</li>
       </ul>

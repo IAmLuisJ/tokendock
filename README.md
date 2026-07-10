@@ -130,7 +130,7 @@ configured issuer, and OIDC discovery URLs are derived from it. Set
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /token` | Client credentials grant. Client auth via HTTP Basic or form body (`client_id`/`client_secret`). |
+| `POST /token` | Client credentials and token exchange (RFC 8693) grants. Client auth via HTTP Basic or form body (`client_id`/`client_secret`). |
 | `GET /.well-known/openid-configuration` | OIDC discovery document |
 | `GET /.well-known/jwks.json` | Public signing keys |
 | `GET /health` | Readiness probe (also `tokendock -healthcheck` for Docker HEALTHCHECK) |
@@ -138,7 +138,31 @@ configured issuer, and OIDC discovery URLs are derived from it. Set
 
 Issued tokens are RS256 JWTs with `iss`, `sub`, `aud`, `exp`, `iat`, `jti`,
 `scope`, and any custom claims from the client's config. Errors follow RFC 6749
-(`invalid_client`, `invalid_scope`, `unsupported_grant_type`, `invalid_request`).
+(`invalid_client`, `invalid_scope`, `unsupported_grant_type`, `invalid_request`,
+`invalid_grant`).
+
+### Token exchange (RFC 8693)
+
+Exchange an existing token for a new one — for testing service-to-service
+delegation:
+
+```sh
+curl -u my-service:ci-secret \
+  -d grant_type=urn:ietf:params:oauth:grant-type:token-exchange \
+  -d subject_token="$USER_TOKEN" \
+  -d actor_token="$SERVICE_TOKEN" \
+  -d audience=downstream-api \
+  http://localhost:8080/token
+```
+
+Test-double leniency, applied deliberately: `subject_token` (and the optional
+`actor_token`) must be **well-formed** JWTs containing `sub`, but signatures
+and expiry are not verified — exchange TokenDock-issued, third-party, or
+hand-crafted tokens freely. The issued token carries the subject's `sub` and
+custom claims (subject wins over client-configured claims on conflict), takes
+audience/scopes/lifetime from the requesting client (request `audience` and
+`scope` params override), and gets `act: {"sub": …}` when an `actor_token` is
+supplied. Any configured client may use either grant.
 
 ## TokenDock vs. mock-oauth2-server
 
@@ -150,7 +174,7 @@ plenty of teams. An honest comparison:
 |---|---|---|
 | Runtime & image | ~4 MB static Go binary | ~200 MB JVM image (Kotlin) |
 | Cold start | Milliseconds | Seconds (JVM startup) |
-| Grant types | Client credentials only, deliberately | Authorization code, token exchange, JWT bearer, refresh & more |
+| Grant types | Client credentials + token exchange (RFC 8693) | Authorization code, token exchange, JWT bearer, refresh & more |
 | Interactive login page | None | Yes — for browser-driven E2E tests |
 | Embed in test code | Container only | JVM library, JUnit-friendly |
 | Issuers | One per container | Multiple per instance |
@@ -163,9 +187,9 @@ on the JVM, or would rather declare clients in a few env vars than maintain
 config code.
 
 **Choose mock-oauth2-server when** your E2E tests drive a browser through a
-real login redirect, you need authorization code flow / token exchange /
-refresh tokens, you want the server embedded in your JUnit lifecycle, or you
-need several issuers from one instance.
+real login redirect, you need authorization code flow or refresh tokens, you
+want the server embedded in your JUnit lifecycle, or you need several issuers
+from one instance.
 
 ## Development
 

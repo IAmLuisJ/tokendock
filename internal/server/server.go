@@ -32,7 +32,7 @@ func (s *server) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 		"issuer":                                s.cfg.Issuer,
 		"token_endpoint":                        s.cfg.Issuer + "/token",
 		"jwks_uri":                              s.cfg.Issuer + "/.well-known/jwks.json",
-		"grant_types_supported":                 []string{"client_credentials"},
+		"grant_types_supported":                 []string{"client_credentials", grantTypeTokenExchange},
 		"token_endpoint_auth_methods_supported": []string{"client_secret_basic", "client_secret_post"},
 		"id_token_signing_alg_values_supported": []string{"RS256"},
 		"response_types_supported":              []string{"token"},
