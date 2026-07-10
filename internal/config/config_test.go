@@ -163,6 +163,90 @@ clients:
 	}
 }
 
+func TestEnvClientsListDefinesMultipleClients(t *testing.T) {
+	cfg, err := Load("", envFrom(map[string]string{
+		"TOKENDOCK_CLIENTS": `
+- client_id: frontend
+  client_secret: fe-secret
+  scopes: [read]
+  audience: my-api
+- client_id: worker
+  claims:
+    roles: [batch]
+`,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DemoClient {
+		t.Error("DemoClient = true, want false")
+	}
+	if len(cfg.Clients) != 2 {
+		t.Fatalf("len(Clients) = %d, want 2", len(cfg.Clients))
+	}
+	fe, worker := cfg.Clients[0], cfg.Clients[1]
+	if fe.ClientID != "frontend" || fe.ClientSecret != "fe-secret" || fe.Audience != "my-api" {
+		t.Errorf("frontend = %+v", fe)
+	}
+	if worker.ClientID != "worker" || worker.ClientSecret != "" {
+		t.Errorf("worker = %+v, want secretless", worker)
+	}
+	if worker.Subject != "worker" || worker.TokenLifetime != 3600 {
+		t.Errorf("defaults not applied to env-list client: %+v", worker)
+	}
+	roles, ok := worker.Claims["roles"].([]any)
+	if !ok || len(roles) != 1 || roles[0] != "batch" {
+		t.Errorf("worker claims = %v", worker.Claims)
+	}
+}
+
+func TestEnvClientsAcceptsJSON(t *testing.T) {
+	cfg, err := Load("", envFrom(map[string]string{
+		"TOKENDOCK_CLIENTS": `[{"client_id": "a", "client_secret": "s"}, {"client_id": "b"}]`,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Clients) != 2 || cfg.Clients[0].ClientID != "a" || cfg.Clients[1].ClientID != "b" {
+		t.Errorf("clients = %+v", cfg.Clients)
+	}
+}
+
+func TestEnvClientsAppendsToFileAndSingleEnvClient(t *testing.T) {
+	path := writeTempConfig(t, `
+clients:
+  - client_id: from-file
+    client_secret: fs
+`)
+	cfg, err := Load(path, envFrom(map[string]string{
+		"TOKENDOCK_CLIENTS":   `[{"client_id": "from-list"}]`,
+		"TOKENDOCK_CLIENT_ID": "from-single",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, c := range cfg.Clients {
+		ids = append(ids, c.ClientID)
+	}
+	want := []string{"from-file", "from-list", "from-single"}
+	if len(ids) != 3 || ids[0] != want[0] || ids[1] != want[1] || ids[2] != want[2] {
+		t.Errorf("client ids = %v, want %v", ids, want)
+	}
+}
+
+func TestEnvClientsInvalidYAMLIsError(t *testing.T) {
+	if _, err := Load("", envFrom(map[string]string{"TOKENDOCK_CLIENTS": "{not [valid"})); err == nil {
+		t.Error("want error for malformed TOKENDOCK_CLIENTS, got nil")
+	}
+}
+
+func TestEnvClientsEntryWithoutIDIsError(t *testing.T) {
+	if _, err := Load("", envFrom(map[string]string{"TOKENDOCK_CLIENTS": `[{"client_secret": "orphan"}]`})); err == nil {
+		t.Error("want error for TOKENDOCK_CLIENTS entry without client_id, got nil")
+	}
+}
+
 func TestIssuerDefaultDerivedFromPort(t *testing.T) {
 	path := writeTempConfig(t, `
 port: 9000

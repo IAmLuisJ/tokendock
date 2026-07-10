@@ -114,55 +114,44 @@ environment variables:
 ## Configuration
 
 Three layers, later wins: **defaults → YAML file → environment variables**.
+Zero config gets you the demo client (`tokendock` / `tokendock-secret`).
 
-### Environment variables (single client)
-
-| Variable | Meaning |
-|---|---|
-| `TOKENDOCK_ISSUER` | Issuer URL embedded in tokens (default `http://localhost:<port>`) |
-| `TOKENDOCK_PORT` | Listen port (default `8080`) |
-| `TOKENDOCK_CLIENT_ID` / `TOKENDOCK_CLIENT_SECRET` | Define a client (omit the secret to accept **any** secret for that client ID) |
-| `TOKENDOCK_SCOPES` | Comma-separated scopes the client may request |
-| `TOKENDOCK_AUDIENCE` | `aud` claim for issued tokens |
-| `TOKENDOCK_SIGNING_KEY` | Path to an RSA private key PEM (default: ephemeral key per start) |
-| `TOKENDOCK_CONFIG` | Path to the YAML config file |
-
-### YAML file (multiple clients, custom claims)
-
-Mounted at `/etc/tokendock/config.yaml` (or set `TOKENDOCK_CONFIG` / `-config`):
+**One client** — env vars are enough:
 
 ```yaml
-issuer: http://tokendock:8080
-port: 8080
-# signing_key: /keys/private.pem   # optional; ephemeral if omitted
-clients:
-  - client_id: my-service
-    client_secret: ci-secret  # omit to accept ANY secret — CI never needs the real one
-    scopes: [read, write]      # empty/omitted = any scope allowed
-    audience: my-api
-    subject: my-service        # defaults to client_id
-    token_lifetime: 3600       # seconds, default 3600
-    claims:                    # arbitrary extra claims for authz testing
-      roles: [admin]
-      tenant: acme
+env:
+  TOKENDOCK_ISSUER: http://localhost:8080
+  TOKENDOCK_CLIENT_ID: my-service     # omit TOKENDOCK_CLIENT_SECRET to accept ANY secret
+  TOKENDOCK_SCOPES: read,write
+  TOKENDOCK_AUDIENCE: my-api
 ```
 
-If no clients are configured anywhere, TokenDock starts with the demo client
-`tokendock` / `tokendock-secret` (any scope allowed) and logs a loud warning.
+**Multiple clients** — either mount a YAML file at
+`/etc/tokendock/config.yaml`, or put an inline list in `TOKENDOCK_CLIENTS`
+(no file needed — ideal for GitHub Actions `services:` blocks, which can't
+mount repo files):
 
-**Secretless clients**: a client configured with only a `client_id` accepts any
-secret (including none). Your app keeps sending whatever credential it normally
-sends — TokenDock issues the token either way, and your real secret never
-enters CI. The startup log flags these clients loudly.
+```yaml
+env:
+  TOKENDOCK_CLIENTS: |
+    - client_id: frontend-service
+      scopes: [read]
+    - client_id: batch-worker
+      client_secret: worker-secret
+      scopes: [read, write]
+      claims:
+        roles: [batch]
+```
 
-### ⚠️ The issuer URL must match
+Two rules worth knowing before anything else: a client without a
+`client_secret` accepts **any** secret (your real one never enters CI), and
+the **issuer must match the URL as the app under test sees it** —
+`http://tokendock:8080` from inside a Docker network is not
+`http://localhost:8080` from the host.
 
-JWT validators compare the token's `iss` claim **strictly** against their
-configured issuer, and OIDC discovery URLs are derived from it. Set
-`TOKENDOCK_ISSUER` to the URL **as the app under test sees it**:
-
-- App in a container on the same Docker network: `http://tokendock:8080`
-- App on the runner host (services with mapped ports): `http://localhost:8080`
+📖 **[Full configuration reference →](docs/configuration.md)** — every
+variable and per-client field, defaults, JSON forms, and the issuer gotcha
+explained.
 
 ## Endpoints
 

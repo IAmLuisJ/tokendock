@@ -29,8 +29,11 @@ inputs:
   audience:
     description: aud claim for issued tokens
     default: ""
+  clients:
+    description: Inline YAML/JSON list of clients (sets TOKENDOCK_CLIENTS) — use for multiple clients without a config file
+    default: ""
   config-file:
-    description: Path to a TokenDock YAML config file (overrides the client-* inputs)
+    description: Path to a TokenDock YAML config file (overrides the clients and client-* inputs)
     default: ""
 
 outputs:
@@ -64,11 +67,16 @@ runs:
 
         if [ -n "${{ inputs.config-file }}" ]; then
           args+=(-v "$(realpath "${{ inputs.config-file }}"):/etc/tokendock/config.yaml:ro")
-        elif [ -n "${{ inputs.client-id }}" ]; then
-          args+=(-e "TOKENDOCK_CLIENT_ID=${{ inputs.client-id }}"
-                 -e "TOKENDOCK_CLIENT_SECRET=${{ inputs.client-secret }}")
-          [ -n "${{ inputs.scopes }}" ]   && args+=(-e "TOKENDOCK_SCOPES=${{ inputs.scopes }}")
-          [ -n "${{ inputs.audience }}" ] && args+=(-e "TOKENDOCK_AUDIENCE=${{ inputs.audience }}")
+        else
+          if [ -n "${{ inputs.clients }}" ]; then
+            args+=(-e "TOKENDOCK_CLIENTS=${{ inputs.clients }}")
+          fi
+          if [ -n "${{ inputs.client-id }}" ]; then
+            args+=(-e "TOKENDOCK_CLIENT_ID=${{ inputs.client-id }}"
+                   -e "TOKENDOCK_CLIENT_SECRET=${{ inputs.client-secret }}")
+            [ -n "${{ inputs.scopes }}" ]   && args+=(-e "TOKENDOCK_SCOPES=${{ inputs.scopes }}")
+            [ -n "${{ inputs.audience }}" ] && args+=(-e "TOKENDOCK_AUDIENCE=${{ inputs.audience }}")
+          fi
         fi
 
         docker run "${args[@]}" "${{ inputs.image }}"

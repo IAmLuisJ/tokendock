@@ -110,6 +110,17 @@ func applyEnv(cfg *Config, env EnvLookup) error {
 		cfg.SigningKey = v
 	}
 
+	// TOKENDOCK_CLIENTS holds an inline YAML/JSON list of clients — the
+	// multi-client escape hatch for environments where mounting a config
+	// file is awkward (e.g. GitHub Actions service containers).
+	if v, ok := env("TOKENDOCK_CLIENTS"); ok {
+		var clients []Client
+		if err := yaml.Unmarshal([]byte(v), &clients); err != nil {
+			return fmt.Errorf("parsing TOKENDOCK_CLIENTS: %w", err)
+		}
+		cfg.Clients = append(cfg.Clients, clients...)
+	}
+
 	id, ok := env("TOKENDOCK_CLIENT_ID")
 	if !ok {
 		return nil
