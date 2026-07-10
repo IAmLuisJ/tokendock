@@ -153,6 +153,11 @@ the **issuer must match the URL as the app under test sees it** —
 variable and per-client field, defaults, JSON forms, and the issuer gotcha
 explained.
 
+🔌 **[Pointing your app at TokenDock →](docs/system-under-test.md)** —
+framework-specific setup for the system under test: Spring Boot property
+files and env overrides, Node.js (jose), ASP.NET Core, and a troubleshooting
+checklist.
+
 ## Endpoints
 
 | Endpoint | Purpose |
