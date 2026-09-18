@@ -168,8 +168,9 @@ checklist.
 | `GET /health` | Readiness probe (also `tokendock -healthcheck` for Docker HEALTHCHECK) |
 | `GET /heartbeat` | Alias of `/health`, for tooling that expects a heartbeat path |
 
-Issued tokens are RS256 JWTs with `iss`, `sub`, `aud`, `exp`, `iat`, `jti`,
-`scope`, and any custom claims from the client's config. Errors follow RFC 6749
+Issued tokens are RS256 JWTs with the RFC 9068 `typ: at+jwt` header, `kid`, and
+`iss`, `sub`, `aud`, `exp`, `iat`, `jti`, `scope`, plus any custom claims from
+the client's config. Errors follow RFC 6749
 (`invalid_client`, `invalid_scope`, `unsupported_grant_type`, `invalid_request`,
 `invalid_grant`).
 

@@ -149,6 +149,7 @@ func (s *server) mintToken(spec tokenSpec) (string, error) {
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	token.Header["kid"] = s.key.KID
+	token.Header["typ"] = "at+jwt" // RFC 9068 §2.1: explicit access-token type
 	return token.SignedString(s.key.Private)
 }
 
