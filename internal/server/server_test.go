@@ -90,6 +90,9 @@ func parseToken(t *testing.T, raw string, key *keys.Key) jwt.MapClaims {
 		if kid := tok.Header["kid"]; kid != key.KID {
 			t.Errorf("kid = %v, want %s", kid, key.KID)
 		}
+		if typ := tok.Header["typ"]; typ != "at+jwt" {
+			t.Errorf("typ = %v, want at+jwt (RFC 9068)", typ)
+		}
 		return &key.Private.PublicKey, nil
 	})
 	if err != nil {

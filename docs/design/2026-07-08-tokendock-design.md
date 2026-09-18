@@ -48,7 +48,7 @@ Errors per RFC 6749: `401 {"error":"invalid_client"}`, `400 {"error":"invalid_sc
 
 ### Tokens & keys
 
-RS256 JWTs, `kid` header. Claims: `iss`, `sub`, `aud`, `exp`, `iat`, `jti`, `scope` (space-delimited), merged with per-client custom claims. Default signing key: ephemeral RSA-2048 generated at startup; optional mounted PEM for reproducibility.
+RS256 JWTs, `kid` and `typ: at+jwt` (RFC 9068) headers. Claims: `iss`, `sub`, `aud`, `exp`, `iat`, `jti`, `scope` (space-delimited), merged with per-client custom claims. Default signing key: ephemeral RSA-2048 generated at startup; optional mounted PEM for reproducibility.
 
 ### Repo layout
 
