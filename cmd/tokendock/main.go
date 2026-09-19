@@ -75,6 +75,11 @@ func logStartup(cfg *config.Config, key *keys.Key) {
 	} else {
 		log.Printf("signing key: ephemeral RSA-2048 (kid %s)", key.KID)
 	}
+	if cfg.AtJWT() {
+		log.Printf("access token typ: at+jwt (RFC 9068); set TOKENDOCK_RFC9068=false for plain JWT")
+	} else {
+		log.Printf("access token typ: JWT (RFC 9068 disabled)")
+	}
 	for _, c := range cfg.Clients {
 		scopes := "any scope"
 		if len(c.Scopes) > 0 {

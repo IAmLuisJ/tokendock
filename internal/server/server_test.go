@@ -80,7 +80,14 @@ func requestToken(t *testing.T, ts *httptest.Server, form url.Values, basicAuth 
 	return resp, body
 }
 
+// parseToken verifies a token and asserts the default RFC 9068 at+jwt header.
+// Use parseTokenTyp when the server under test disables RFC 9068.
 func parseToken(t *testing.T, raw string, key *keys.Key) jwt.MapClaims {
+	t.Helper()
+	return parseTokenTyp(t, raw, key, "at+jwt")
+}
+
+func parseTokenTyp(t *testing.T, raw string, key *keys.Key, wantTyp string) jwt.MapClaims {
 	t.Helper()
 	claims := jwt.MapClaims{}
 	_, err := jwt.ParseWithClaims(raw, claims, func(tok *jwt.Token) (any, error) {
@@ -90,8 +97,8 @@ func parseToken(t *testing.T, raw string, key *keys.Key) jwt.MapClaims {
 		if kid := tok.Header["kid"]; kid != key.KID {
 			t.Errorf("kid = %v, want %s", kid, key.KID)
 		}
-		if typ := tok.Header["typ"]; typ != "at+jwt" {
-			t.Errorf("typ = %v, want at+jwt (RFC 9068)", typ)
+		if typ := tok.Header["typ"]; typ != wantTyp {
+			t.Errorf("typ = %v, want %s", typ, wantTyp)
 		}
 		return &key.Private.PublicKey, nil
 	})
@@ -408,4 +415,25 @@ func TestHeartbeat(t *testing.T) {
 	if body.Status != "ok" {
 		t.Errorf("status field = %q, want ok", body.Status)
 	}
+}
+
+func TestRFC9068DisabledIssuesPlainJWTTyp(t *testing.T) {
+	key, err := keys.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	off := false
+	cfg := &config.Config{
+		Issuer:  "http://tokendock.test",
+		RFC9068: &off,
+		Clients: []config.Client{{ClientID: "legacy", Subject: "legacy", TokenLifetime: 60}},
+	}
+	ts := httptest.NewServer(New(cfg, key))
+	t.Cleanup(ts.Close)
+
+	_, body := requestToken(t, ts, url.Values{"grant_type": {"client_credentials"}}, [2]string{"legacy", "x"})
+	if body.Error != "" {
+		t.Fatalf("unexpected error %q", body.Error)
+	}
+	parseTokenTyp(t, body.AccessToken, key, "JWT")
 }
