@@ -1,8 +1,9 @@
 name: TokenDock
 description: >-
   Start TokenDock, a fake OAuth 2.0 Authorization Server for CI. Issues
-  RS256-signed JWTs via the client credentials grant, with JWKS and OIDC
-  discovery endpoints for the app under test to validate them.
+  RS256-signed JWTs (RFC 9068 at+jwt by default) via the client credentials
+  grant, with JWKS and OIDC discovery endpoints for the app under test to
+  validate them.
 branding:
   icon: anchor
   color: blue
@@ -35,6 +36,12 @@ inputs:
   config-file:
     description: Path to a TokenDock YAML config file (overrides the clients and client-* inputs)
     default: ""
+  rfc9068:
+    description: >-
+      Issue access tokens with the RFC 9068 "at+jwt" typ header. Default true.
+      Set to false for validators that only accept typ "JWT" (e.g. Spring
+      Security 7 / Spring Boot 4 defaults).
+    default: ""
 
 outputs:
   issuer:
@@ -64,6 +71,10 @@ runs:
         args=(-d --name tokendock -p "${port}:${port}"
               -e "TOKENDOCK_PORT=${port}"
               -e "TOKENDOCK_ISSUER=${issuer}")
+
+        if [ -n "${{ inputs.rfc9068 }}" ]; then
+          args+=(-e "TOKENDOCK_RFC9068=${{ inputs.rfc9068 }}")
+        fi
 
         if [ -n "${{ inputs.config-file }}" ]; then
           args+=(-v "$(realpath "${{ inputs.config-file }}"):/etc/tokendock/config.yaml:ro")

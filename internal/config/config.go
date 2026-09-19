@@ -38,9 +38,20 @@ type Config struct {
 	SigningKey string   `yaml:"signing_key"`
 	Clients    []Client `yaml:"clients"`
 
+	// RFC9068 controls the JWS "typ" header on issued access tokens:
+	// "at+jwt" (RFC 9068) when enabled, plain "JWT" when disabled. Nil means
+	// unset, which AtJWT treats as enabled.
+	RFC9068 *bool `yaml:"rfc9068"`
+
 	// DemoClient is true when no clients were configured and the built-in
 	// demo client was injected; main logs a loud warning in that case.
 	DemoClient bool `yaml:"-"`
+}
+
+// AtJWT reports whether issued access tokens carry the RFC 9068 "at+jwt" typ
+// header. It defaults to true when rfc9068 is not configured.
+func (c *Config) AtJWT() bool {
+	return c.RFC9068 == nil || *c.RFC9068
 }
 
 // EnvLookup matches os.LookupEnv so tests can inject environment values.
@@ -108,6 +119,13 @@ func applyEnv(cfg *Config, env EnvLookup) error {
 	}
 	if v, ok := env("TOKENDOCK_SIGNING_KEY"); ok {
 		cfg.SigningKey = v
+	}
+	if v, ok := env("TOKENDOCK_RFC9068"); ok {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return fmt.Errorf("TOKENDOCK_RFC9068 %q is not a boolean: %w", v, err)
+		}
+		cfg.RFC9068 = &b
 	}
 
 	// TOKENDOCK_CLIENTS holds an inline YAML/JSON list of clients — the

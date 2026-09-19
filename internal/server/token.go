@@ -149,7 +149,14 @@ func (s *server) mintToken(spec tokenSpec) (string, error) {
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	token.Header["kid"] = s.key.KID
-	token.Header["typ"] = "at+jwt" // RFC 9068 §2.1: explicit access-token type
+	// RFC 9068 §2.1 asks for an explicit access-token media type. Some
+	// validators reject anything but "JWT" (Spring Security 7 does by
+	// default), so the header is switchable via the rfc9068 option.
+	if s.cfg.AtJWT() {
+		token.Header["typ"] = "at+jwt"
+	} else {
+		token.Header["typ"] = "JWT"
+	}
 	return token.SignedString(s.key.Private)
 }
 

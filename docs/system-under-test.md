@@ -14,6 +14,11 @@ The pattern is always the same:
    (`http://tokendock:8080` on a compose network, `http://localhost:8080` on
    the host) and must match `TOKENDOCK_ISSUER` exactly.
 
+One exception to "no code changes": apps that validate the JWS `typ` header
+strictly may reject TokenDock's default RFC 9068 `at+jwt` tokens. Spring Boot 4
+is the common case — set `TOKENDOCK_RFC9068=false` or see
+[the Spring Boot 4 section](#spring-boot-4--spring-security-7-rejects-atjwt).
+
 ---
 
 ## Java Spring Boot (Spring Security)
@@ -74,6 +79,53 @@ Two Spring-specific gotchas:
 - **Audience validation** is off by default in Spring. If you enable it
   (`spring.security.oauth2.resourceserver.jwt.audiences=my-api`, Boot 3.1+),
   set `TOKENDOCK_AUDIENCE` to the same value.
+- **Spring Boot 4 rejects TokenDock's default `typ`** — see the next section.
+  Boot 3.x is unaffected.
+
+### Spring Boot 4 / Spring Security 7 rejects `at+jwt`
+
+TokenDock issues RFC 9068 access tokens (`typ: at+jwt`) by default. Spring
+Security 7, which Spring Boot 4 ships with, moved `typ` checking into
+`JwtTypeValidator` and added it to every default validator chain. That
+validator accepts only `JWT`, so a Boot 4 app rejects the token:
+
+```
+the given typ value needs to be one of [JWT]
+```
+
+**Quickest fix — tell TokenDock to emit `typ: JWT`:**
+
+```yaml
+  tokendock:
+    environment:
+      TOKENDOCK_RFC9068: "false"
+```
+
+Nothing else about the token changes, and Boot 3.x apps keep working either
+way.
+
+**Or keep RFC 9068 on and teach the app to accept it.** Useful when the app
+must accept `at+jwt` in production too. Configuring this is fiddlier than it
+looks: a standalone `JwtTypeValidator` bean gets wrapped by Boot and ignored,
+and `JwtValidators.createAtJwtValidator()` refuses to start without a
+`clientId`. Build the decoder yourself:
+
+```java
+@Bean
+JwtDecoder jwtDecoder(
+        @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuer) {
+    var decoder = NimbusJwtDecoder.withIssuerLocation(issuer)
+            .validateType(false)   // singular; stop Nimbus pre-checking typ
+            .build();
+    decoder.setJwtValidator(JwtValidators.createDefaultWithValidators(
+            new JwtIssuerValidator(issuer),
+            new JwtTypeValidator(List.of("JWT", "at+jwt"))));
+    return decoder;
+}
+```
+
+Declaring that bean replaces Boot's auto-configured decoder, so the default
+`typ` validator no longer applies.
 
 ### Variant: JWKS URL only (no startup discovery)
 
@@ -124,6 +176,18 @@ export async function verify(token) {
 }
 ```
 
+`jose` ignores the `typ` header unless you ask for it, so TokenDock's
+`at+jwt` tokens verify as-is. To assert RFC 9068 compliance in the test,
+add the `typ` option — it then requires the header to be present and match:
+
+```js
+const { payload } = await jwtVerify(token, jwks, {
+  issuer,
+  audience: "my-api",
+  typ: "at+jwt",   // fails closed if the token is not an RFC 9068 access token
+});
+```
+
 Compose override — nothing framework-specific, it's your own env var:
 
 ```yaml
@@ -156,6 +220,14 @@ Compose override (double underscore maps to the `:` separator):
       Oidc__Issuer: http://tokendock:8080
 ```
 
+`JwtBearer` does not check the `typ` header unless you list the types you
+accept, so TokenDock's tokens work unchanged. To require RFC 9068 access
+tokens — and reject ID tokens presented as bearer tokens — set `ValidTypes`:
+
+```csharp
+options.TokenValidationParameters.ValidTypes = ["at+jwt"];
+```
+
 ---
 
 ## Checklist when it doesn't work
@@ -166,6 +238,10 @@ Compose override (double underscore maps to the `:` separator):
   (Spring's `issuer-uri`) need `depends_on: condition: service_healthy`.
 - **Audience rejected** — if your app validates `aud`, set
   `TOKENDOCK_AUDIENCE` (or per-client `audience`) to match.
+- **`typ` rejected** (`the given typ value needs to be one of [JWT]`) — the
+  app validates the JWS type header and does not accept RFC 9068's `at+jwt`.
+  Spring Boot 4 does this by default. Set `TOKENDOCK_RFC9068=false`, or
+  [configure the app to accept it](#spring-boot-4--spring-security-7-rejects-atjwt).
 - **HTTPS required** — some stacks refuse plain-HTTP issuers outside dev
   profiles (ASP.NET's `RequireHttpsMetadata`); relax that for the test
   environment only.

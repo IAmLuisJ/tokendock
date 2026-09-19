@@ -8,7 +8,7 @@ test-specific code in your app.
 
 - **Tiny and instant**: single static Go binary in a distroless image (~4MB, starts in milliseconds)
 - **Zero-config**: starts with a built-in demo client; add real clients via env vars or YAML
-- **Standards-shaped**: `/token`, `/.well-known/openid-configuration`, `/.well-known/jwks.json`, RFC 6749 errors
+- **Standards-shaped**: `/token`, `/.well-known/openid-configuration`, `/.well-known/jwks.json`, RFC 9068 `at+jwt` access tokens, RFC 8693 token exchange, RFC 6749 errors
 
 > ⚠️ TokenDock is a **test double**. It signs whatever your config says with an
 > ephemeral key. Never expose it outside CI or local development.
@@ -173,6 +173,10 @@ Issued tokens are RS256 JWTs with the RFC 9068 `typ: at+jwt` header, `kid`, and
 the client's config. Errors follow RFC 6749
 (`invalid_client`, `invalid_scope`, `unsupported_grant_type`, `invalid_request`,
 `invalid_grant`).
+
+Set `TOKENDOCK_RFC9068=false` to issue `typ: JWT` instead — needed for
+validators that reject `at+jwt`, notably Spring Security 7 / Spring Boot 4 out
+of the box. See [RFC 9068 and the `typ` header](docs/configuration.md#rfc-9068-and-the-typ-header).
 
 ### Token exchange (RFC 8693)
 

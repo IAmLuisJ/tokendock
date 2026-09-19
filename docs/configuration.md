@@ -22,6 +22,7 @@ extend earlier ones:
 | `TOKENDOCK_CLIENT_SECRET` | Secret for that client. **Omit to accept any secret** (see [Secretless clients](#secretless-clients)). |
 | `TOKENDOCK_SCOPES` | Comma-separated scopes that client may request. Empty = any scope allowed. |
 | `TOKENDOCK_AUDIENCE` | `aud` claim for that client's tokens. |
+| `TOKENDOCK_RFC9068` | `true` (default) issues access tokens with the RFC 9068 `typ: at+jwt` header; `false` issues `typ: JWT`. See [RFC 9068 and the `typ` header](#rfc-9068-and-the-typ-header). |
 | `TOKENDOCK_CLIENTS` | **Multiple clients, no file needed**: an inline YAML or JSON list of client objects (same schema as the config file's `clients:` entries). |
 
 ### Multiple clients via `TOKENDOCK_CLIENTS`
@@ -80,6 +81,7 @@ entries, then the single `TOKENDOCK_CLIENT_ID` client.
 issuer: http://tokendock:8080   # must match how the app under test reaches the server
 port: 8080
 signing_key: /keys/private.pem  # optional; ephemeral RSA-2048 per start if omitted
+rfc9068: true                   # optional; false issues typ: JWT instead of at+jwt
 clients:
   - client_id: my-service       # required
     client_secret: ci-secret    # omit to accept ANY secret
@@ -103,6 +105,55 @@ clients:
 | `subject` | `client_id` | Becomes the `sub` claim for client_credentials tokens. |
 | `token_lifetime` | `3600` | Seconds until `exp`. |
 | `claims` | `{}` | Merged into every token this client obtains. |
+
+## RFC 9068 and the `typ` header
+
+By default TokenDock stamps issued access tokens with the
+[RFC 9068](https://datatracker.ietf.org/doc/rfc9068/) media type in the JWS
+header:
+
+```json
+{ "alg": "RS256", "kid": "…", "typ": "at+jwt" }
+```
+
+That is what a real RFC 9068 authorization server emits, and it lets the app
+under test exercise its strict `typ` checking in CI.
+
+**Turn it off when your validator rejects `at+jwt`.** Either layer works:
+
+```yaml
+# config.yaml
+rfc9068: false
+```
+
+```yaml
+# docker-compose.yml
+environment:
+  TOKENDOCK_RFC9068: "false"
+```
+
+```yaml
+# GitHub Actions, via the composite action
+- uses: IAmLuisJ/tokendock@v1
+  with:
+    rfc9068: "false"
+```
+
+With it disabled, tokens carry `typ: JWT` and everything else is unchanged.
+The startup log always states which one is in effect.
+
+### Which validators care
+
+| Stack | Default behavior with `at+jwt` |
+|---|---|
+| Spring Security 7 / Spring Boot 4 | **Rejects** — `JwtTypeValidator` accepts only `JWT` unless you configure otherwise |
+| Spring Boot 3.x | Accepts |
+| Node `jose` | Accepts — `typ` is only checked when you pass the `typ` option |
+| ASP.NET Core `JwtBearer` | Accepts — `typ` is only checked when you set `TokenValidationParameters.ValidTypes` |
+
+The fastest fix for a Spring Boot 4 app under test is `TOKENDOCK_RFC9068=false`.
+To keep RFC 9068 on and adjust the app instead, see
+[Pointing your app at TokenDock](system-under-test.md#spring-boot-4--spring-security-7-rejects-atjwt).
 
 ## Secretless clients
 

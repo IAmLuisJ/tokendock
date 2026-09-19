@@ -311,3 +311,48 @@ func TestInvalidEnvPortIsError(t *testing.T) {
 		t.Error("want error for non-numeric TOKENDOCK_PORT, got nil")
 	}
 }
+
+func TestRFC9068DefaultsToEnabled(t *testing.T) {
+	cfg, err := Load("", noEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.AtJWT() {
+		t.Error("AtJWT() = false, want true by default")
+	}
+}
+
+func TestRFC9068DisabledInFile(t *testing.T) {
+	path := writeTempConfig(t, "rfc9068: false\n")
+	cfg, err := Load(path, noEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AtJWT() {
+		t.Error("AtJWT() = true, want false when rfc9068: false in file")
+	}
+}
+
+func TestRFC9068EnvOverridesFile(t *testing.T) {
+	path := writeTempConfig(t, "rfc9068: false\n")
+	cfg, err := Load(path, envFrom(map[string]string{"TOKENDOCK_RFC9068": "true"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.AtJWT() {
+		t.Error("AtJWT() = false, want env TOKENDOCK_RFC9068=true to override file")
+	}
+	cfg, err = Load("", envFrom(map[string]string{"TOKENDOCK_RFC9068": "false"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AtJWT() {
+		t.Error("AtJWT() = true, want false with TOKENDOCK_RFC9068=false")
+	}
+}
+
+func TestInvalidEnvRFC9068IsError(t *testing.T) {
+	if _, err := Load("", envFrom(map[string]string{"TOKENDOCK_RFC9068": "maybe"})); err == nil {
+		t.Error("want error for non-boolean TOKENDOCK_RFC9068, got nil")
+	}
+}

@@ -46,7 +46,9 @@ secretless clients participate normally).
 - `scope`: requested scopes, else client's configured scopes, omitted if none.
 - `exp`/`iat`: now + client `token_lifetime`.
 - `act`: `{"sub": <actor sub>}` when `actor_token` present.
-- Signed RS256 with the server key, `kid` header as today.
+- Signed RS256 with the server key, `kid` header as today. (Since v1.4.0 the
+  shared signing path also stamps `typ: at+jwt` per RFC 9068, so exchanged
+  tokens get it too; `rfc9068: false` reverts to `typ: JWT`.)
 
 ## Response
 
