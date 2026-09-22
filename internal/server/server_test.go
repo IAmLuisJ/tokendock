@@ -437,3 +437,23 @@ func TestRFC9068DisabledIssuesPlainJWTTyp(t *testing.T) {
 	}
 	parseTokenTyp(t, body.AccessToken, key, "JWT")
 }
+
+func TestOversizedTokenRequestIsRejected(t *testing.T) {
+	ts, _, _ := testServer(t)
+	form := url.Values{
+		"grant_type": {"client_credentials"},
+		"padding":    {strings.Repeat("x", maxTokenRequestBytes+1)},
+	}
+
+	resp, body := requestToken(t, ts, form, [2]string{"my-service", "ci-secret"})
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (body = %+v)", resp.StatusCode, body)
+	}
+	if body.Error != "invalid_request" {
+		t.Errorf("error = %q, want invalid_request", body.Error)
+	}
+	if body.AccessToken != "" {
+		t.Error("oversized request was issued a token")
+	}
+}

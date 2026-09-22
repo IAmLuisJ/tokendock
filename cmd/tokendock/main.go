@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/IAmLuisJ/tokendock/internal/config"
 	"github.com/IAmLuisJ/tokendock/internal/keys"
@@ -40,8 +41,7 @@ func main() {
 	}
 
 	logStartup(cfg, key)
-	addr := fmt.Sprintf(":%d", cfg.Port)
-	if err := http.ListenAndServe(addr, server.New(cfg, key)); err != nil {
+	if err := newHTTPServer(cfg, server.New(cfg, key)).ListenAndServe(); err != nil {
 		log.Fatalf("tokendock: %v", err)
 	}
 }
@@ -57,6 +57,20 @@ func defaultConfigPath() string {
 		return conventional
 	}
 	return ""
+}
+
+// newHTTPServer builds the listening server. The explicit deadlines keep a
+// slow or stalled client from holding a connection open indefinitely, which
+// the zero-value http.Server would allow.
+func newHTTPServer(cfg *config.Config, h http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              fmt.Sprintf(":%d", cfg.Port),
+		Handler:           h,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
 }
 
 func loadKey(cfg *config.Config) (*keys.Key, error) {
