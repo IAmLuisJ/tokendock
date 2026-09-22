@@ -14,7 +14,13 @@ import (
 	"github.com/IAmLuisJ/tokendock/internal/config"
 )
 
+// maxTokenRequestBytes caps the token request body. Real requests are a few
+// hundred bytes; token exchange subject tokens are the only large field and
+// stay far below this.
+const maxTokenRequestBytes = 64 << 10
+
 func (s *server) handleToken(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxTokenRequestBytes)
 	if err := r.ParseForm(); err != nil {
 		writeOAuthError(w, http.StatusBadRequest, "invalid_request", "malformed form body")
 		return
