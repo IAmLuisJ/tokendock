@@ -1,14 +1,15 @@
 # TokenDock
 
 A fake OAuth 2.0 Authorization Server for CI. TokenDock issues RS256-signed JWTs
-via the client credentials grant and serves the JWKS + OIDC discovery endpoints
-your application already uses to validate tokens — so JWT-protected flows work
-in CI without reaching your real authorization server, and without any
-test-specific code in your app.
+via the client credentials, authorization code, and token exchange grants, and
+serves the JWKS + OIDC discovery endpoints your application already uses to
+validate tokens — so JWT-protected flows, browser logins included, work in CI
+without reaching your real authorization server, and without any test-specific
+code in your app.
 
 - **Tiny and instant**: single static Go binary in a distroless image (~4MB, starts in milliseconds)
 - **Zero-config**: starts with a built-in demo client; add real clients via env vars or YAML
-- **Standards-shaped**: `/token`, `/.well-known/openid-configuration`, `/.well-known/jwks.json`, RFC 9068 `at+jwt` access tokens, RFC 8693 token exchange, RFC 6749 errors
+- **Standards-shaped**: `/token`, `/authorize`, `/.well-known/openid-configuration`, `/.well-known/jwks.json`, PKCE, OIDC ID tokens, RFC 9068 `at+jwt` access tokens, RFC 8693 token exchange, RFC 6749 errors
 
 > ⚠️ TokenDock is a **test double**. It signs whatever your config says with an
 > ephemeral key. Never expose it outside CI or local development.
@@ -71,7 +72,7 @@ steps:
 ```
 
 The action starts the container, waits for it to be healthy, and exposes
-`issuer`, `token-endpoint`, and `jwks-uri` outputs.
+`issuer`, `token-endpoint`, `authorization-endpoint`, and `jwks-uri` outputs.
 
 ## Docker Compose
 
@@ -162,7 +163,8 @@ checklist.
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /token` | Client credentials and token exchange (RFC 8693) grants. Client auth via HTTP Basic or form body (`client_id`/`client_secret`). |
+| `POST /token` | Client credentials, authorization code, and token exchange (RFC 8693) grants. Client auth via HTTP Basic or form body (`client_id`/`client_secret`). |
+| `GET`/`POST /authorize` | Authorization code flow: redirects straight back with a code, or shows a login page with `TOKENDOCK_INTERACTIVE_LOGIN=true`. |
 | `GET /.well-known/openid-configuration` | OIDC discovery document |
 | `GET /.well-known/jwks.json` | Public signing keys |
 | `GET /health` | Readiness probe (also `tokendock -healthcheck` for Docker HEALTHCHECK) |
@@ -170,13 +172,55 @@ checklist.
 
 Issued tokens are RS256 JWTs with the RFC 9068 `typ: at+jwt` header, `kid`, and
 `iss`, `sub`, `aud`, `exp`, `iat`, `jti`, `scope`, plus any custom claims from
-the client's config. Errors follow RFC 6749
+the client's config. Authorization code requests with the `openid` scope also
+get an OIDC `id_token`. Errors follow RFC 6749
 (`invalid_client`, `invalid_scope`, `unsupported_grant_type`, `invalid_request`,
 `invalid_grant`).
 
 Set `TOKENDOCK_RFC9068=false` to issue `typ: JWT` instead — needed for
 validators that reject `at+jwt`, notably Spring Security 7 / Spring Boot 4 out
 of the box. See [RFC 9068 and the `typ` header](docs/configuration.md#rfc-9068-and-the-typ-header).
+
+### Authorization code (browser login)
+
+For apps that sign users in through a browser redirect: OIDC login in a web
+app, or a SPA using PKCE. Point the app's OIDC settings at TokenDock and it
+discovers `/authorize` like any other provider. TokenDock **approves every
+valid request immediately** and redirects straight back with a code, so a
+browser test has nothing to click:
+
+```sh
+# The browser's leg: /authorize answers with a redirect carrying the code.
+curl -s -o /dev/null -w '%{redirect_url}\n' \
+  'http://localhost:8080/authorize?response_type=code&client_id=tokendock&redirect_uri=http://localhost:3000/callback&scope=openid&state=xyz&login_hint=alice'
+# http://localhost:3000/callback?code=…&state=xyz
+
+# The app's leg: redeem the code at /token.
+curl -u tokendock:tokendock-secret -d grant_type=authorization_code \
+  -d code=… -d redirect_uri=http://localhost:3000/callback \
+  http://localhost:8080/token
+```
+
+- **Who signs in:** the `login_hint` the app sends (most OIDC client libraries
+  can pass one), else the client's configured `subject`. Tokens carry the
+  client's `audience`, `token_lifetime`, and custom `claims`.
+- **`openid` scope:** the response adds an `id_token` for the client (`aud` is
+  the client ID; `nonce` and `auth_time` included), signed with `typ: JWT` so
+  it can never pass for an RFC 9068 access token.
+- **PKCE** (`S256` or `plain`) is verified whenever the app sent a
+  `code_challenge`. SPAs and native apps are secretless clients that send
+  `client_id` alone; CORS is open so SPAs can call `/token` directly.
+- **Redirect URIs:** any absolute `redirect_uri` works unless the client lists
+  `redirect_uris`, which are then matched exactly.
+- **Login page:** `TOKENDOCK_INTERACTIVE_LOGIN=true` makes `/authorize` show a
+  one-field form where the test types the subject — for browser tests that
+  switch between users.
+
+The browser has to reach the issuer URL too. See
+[Authorization code and browser login](docs/configuration.md#authorization-code-and-browser-login)
+for that and every parameter rule, and
+[Pointing your app at TokenDock](docs/system-under-test.md#browser-login-authorization-code)
+for Spring Boot `oauth2Login` and Playwright examples.
 
 ### Token exchange (RFC 8693)
 
@@ -211,22 +255,21 @@ plenty of teams. An honest comparison:
 |---|---|---|
 | Runtime & image | ~4 MB static Go binary | ~200 MB JVM image (Kotlin) |
 | Cold start | Milliseconds | Seconds (JVM startup) |
-| Grant types | Client credentials + token exchange (RFC 8693) | Authorization code, token exchange, JWT bearer, refresh & more |
-| Interactive login page | None | Yes — for browser-driven E2E tests |
+| Grant types | Client credentials, authorization code (PKCE, OIDC ID tokens), token exchange (RFC 8693) | Authorization code, token exchange, JWT bearer, refresh & more |
+| Interactive login page | Opt-in — by default `/authorize` approves instantly | Yes — for browser-driven E2E tests |
 | Embed in test code | Container only | JVM library, JUnit-friendly |
 | Issuers | One per container | Multiple per instance |
 | Configuration | Zero-config default, then env vars or YAML | JSON or programmatic API |
 | CI wrapper | Composite GitHub Action with health-wait and outputs | — |
 
-**Choose TokenDock when** you're testing machine-to-machine bearer tokens,
-want a service container that's ready before your app finishes booting, aren't
-on the JVM, or would rather declare clients in a few env vars than maintain
-config code.
+**Choose TokenDock when** you're testing machine-to-machine bearer tokens or
+browser logins that only need to get through the redirect, want a service
+container that's ready before your app finishes booting, aren't on the JVM, or
+would rather declare clients in a few env vars than maintain config code.
 
-**Choose mock-oauth2-server when** your E2E tests drive a browser through a
-real login redirect, you need authorization code flow or refresh tokens, you
-want the server embedded in your JUnit lifecycle, or you need several issuers
-from one instance.
+**Choose mock-oauth2-server when** you need refresh tokens, a userinfo
+endpoint, or the JWT bearer grant, you want the server embedded in your JUnit
+lifecycle, or you need several issuers from one instance.
 
 ## Development
 

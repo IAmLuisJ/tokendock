@@ -1,6 +1,7 @@
 // TokenDock is a fake OAuth 2.0 Authorization Server for CI: it issues
-// RS256-signed JWTs via the client credentials grant and serves the JWKS
-// and OIDC discovery documents apps need to validate them.
+// RS256-signed JWTs via the client credentials, authorization code, and token
+// exchange grants and serves the JWKS and OIDC discovery documents apps need
+// to validate them.
 package main
 
 import (
@@ -69,6 +70,7 @@ func loadKey(cfg *config.Config) (*keys.Key, error) {
 func logStartup(cfg *config.Config, key *keys.Key) {
 	log.Printf("issuer: %s", cfg.Issuer)
 	log.Printf("token endpoint: %s/token", cfg.Issuer)
+	log.Printf("authorization endpoint: %s/authorize", cfg.Issuer)
 	log.Printf("jwks: %s/.well-known/jwks.json", cfg.Issuer)
 	if cfg.SigningKey != "" {
 		log.Printf("signing key: %s (kid %s)", cfg.SigningKey, key.KID)
@@ -79,6 +81,11 @@ func logStartup(cfg *config.Config, key *keys.Key) {
 		log.Printf("access token typ: at+jwt (RFC 9068); set TOKENDOCK_RFC9068=false for plain JWT")
 	} else {
 		log.Printf("access token typ: JWT (RFC 9068 disabled)")
+	}
+	if cfg.InteractiveLogin {
+		log.Printf("authorization code login: interactive page (the tester types the subject)")
+	} else {
+		log.Printf("authorization code login: auto-approve (subject = login_hint, else the client's subject); set TOKENDOCK_INTERACTIVE_LOGIN=true for a login page")
 	}
 	for _, c := range cfg.Clients {
 		scopes := "any scope"

@@ -1,9 +1,9 @@
 name: TokenDock
 description: >-
   Start TokenDock, a fake OAuth 2.0 Authorization Server for CI. Issues
-  RS256-signed JWTs (RFC 9068 at+jwt by default) via the client credentials
-  grant, with JWKS and OIDC discovery endpoints for the app under test to
-  validate them.
+  RS256-signed JWTs (RFC 9068 at+jwt by default) via the client credentials,
+  authorization code (PKCE, OIDC ID tokens), and token exchange grants, with
+  JWKS and OIDC discovery endpoints for the app under test to validate them.
 branding:
   icon: anchor
   color: blue
@@ -42,6 +42,12 @@ inputs:
       Set to false for validators that only accept typ "JWT" (e.g. Spring
       Security 7 / Spring Boot 4 defaults).
     default: ""
+  interactive-login:
+    description: >-
+      Show a login page at /authorize where the tester types the subject,
+      instead of approving every authorization request immediately. Default
+      false.
+    default: ""
 
 outputs:
   issuer:
@@ -50,6 +56,9 @@ outputs:
   token-endpoint:
     description: OAuth token endpoint URL
     value: ${{ steps.start.outputs.token-endpoint }}
+  authorization-endpoint:
+    description: OAuth authorization endpoint URL (authorization code flow)
+    value: ${{ steps.start.outputs.authorization-endpoint }}
   jwks-uri:
     description: JWKS URL for validating issued tokens
     value: ${{ steps.start.outputs.jwks-uri }}
@@ -76,6 +85,10 @@ runs:
           args+=(-e "TOKENDOCK_RFC9068=${{ inputs.rfc9068 }}")
         fi
 
+        if [ -n "${{ inputs.interactive-login }}" ]; then
+          args+=(-e "TOKENDOCK_INTERACTIVE_LOGIN=${{ inputs.interactive-login }}")
+        fi
+
         if [ -n "${{ inputs.config-file }}" ]; then
           args+=(-v "$(realpath "${{ inputs.config-file }}"):/etc/tokendock/config.yaml:ro")
         else
@@ -99,6 +112,7 @@ runs:
             {
               echo "issuer=${issuer}"
               echo "token-endpoint=${issuer}/token"
+              echo "authorization-endpoint=${issuer}/authorize"
               echo "jwks-uri=${issuer}/.well-known/jwks.json"
             } >> "$GITHUB_OUTPUT"
             exit 0

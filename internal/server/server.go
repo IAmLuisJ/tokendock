@@ -1,5 +1,6 @@
-// Package server implements TokenDock's HTTP endpoints: the client
-// credentials token endpoint, OIDC discovery, JWKS, and health.
+// Package server implements TokenDock's HTTP endpoints: the token endpoint
+// (client credentials, authorization code, token exchange), the
+// authorization endpoint, OIDC discovery, JWKS, and health.
 package server
 
 import (
@@ -11,31 +12,39 @@ import (
 )
 
 type server struct {
-	cfg *config.Config
-	key *keys.Key
+	cfg   *config.Config
+	key   *keys.Key
+	codes *codeStore
 }
 
 // New returns the handler serving all TokenDock endpoints.
 func New(cfg *config.Config, key *keys.Key) http.Handler {
-	s := &server{cfg: cfg, key: key}
+	s := &server{cfg: cfg, key: key, codes: newCodeStore()}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /token", s.handleToken)
+	mux.HandleFunc("GET /authorize", s.handleAuthorize)
+	mux.HandleFunc("POST /authorize", s.handleAuthorize)
+	mux.HandleFunc("POST /login", s.handleLogin)
 	mux.HandleFunc("GET /.well-known/openid-configuration", s.handleDiscovery)
 	mux.HandleFunc("GET /.well-known/jwks.json", s.handleJWKS)
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("GET /heartbeat", s.handleHealth)
-	return mux
+	return cors(mux)
 }
 
 func (s *server) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"issuer":                                s.cfg.Issuer,
+		"authorization_endpoint":                s.cfg.Issuer + "/authorize",
 		"token_endpoint":                        s.cfg.Issuer + "/token",
 		"jwks_uri":                              s.cfg.Issuer + "/.well-known/jwks.json",
-		"grant_types_supported":                 []string{"client_credentials", grantTypeTokenExchange},
-		"token_endpoint_auth_methods_supported": []string{"client_secret_basic", "client_secret_post"},
+		"grant_types_supported":                 []string{"client_credentials", grantTypeTokenExchange, "authorization_code"},
+		"token_endpoint_auth_methods_supported": []string{"client_secret_basic", "client_secret_post", "none"},
 		"id_token_signing_alg_values_supported": []string{"RS256"},
-		"response_types_supported":              []string{"token"},
+		"response_types_supported":              []string{"code"},
+		"response_modes_supported":              []string{"query"},
+		"subject_types_supported":               []string{"public"},
+		"code_challenge_methods_supported":      []string{"S256", "plain"},
 	})
 }
 

@@ -35,12 +35,14 @@ func (s *server) handleToken(w http.ResponseWriter, r *http.Request) {
 	switch grantType := r.PostFormValue("grant_type"); grantType {
 	case "client_credentials":
 		s.handleClientCredentials(w, r, client)
+	case "authorization_code":
+		s.handleAuthorizationCode(w, r, client)
 	case grantTypeTokenExchange:
 		s.handleTokenExchange(w, r, client)
 	case "":
 		writeOAuthError(w, http.StatusBadRequest, "invalid_request", "grant_type is required")
 	default:
-		writeOAuthError(w, http.StatusBadRequest, "unsupported_grant_type", "supported: client_credentials, "+grantTypeTokenExchange)
+		writeOAuthError(w, http.StatusBadRequest, "unsupported_grant_type", "supported: client_credentials, authorization_code, "+grantTypeTokenExchange)
 	}
 }
 
@@ -97,9 +99,14 @@ func (s *server) authenticate(clientID, clientSecret string) *config.Client {
 	return nil
 }
 
+// oidcScopes are the OpenID Connect scopes. Real identity providers accept
+// them from any OIDC client, so they bypass a client's scope allowlist.
+var oidcScopes = []string{"openid", "profile", "email", "address", "phone", "offline_access"}
+
 // grantScopes resolves the scopes for a token request: no requested scope
 // grants the client's configured scopes; a client with no configured scopes
-// allows any request; otherwise every requested scope must be configured.
+// allows any request; otherwise every requested scope must be configured or
+// be an OpenID Connect scope.
 func grantScopes(client *config.Client, requested string) ([]string, bool) {
 	if requested == "" {
 		return client.Scopes, true
@@ -109,7 +116,7 @@ func grantScopes(client *config.Client, requested string) ([]string, bool) {
 		return scopes, true
 	}
 	for _, s := range scopes {
-		if !slices.Contains(client.Scopes, s) {
+		if !slices.Contains(client.Scopes, s) && !slices.Contains(oidcScopes, s) {
 			return nil, false
 		}
 	}
@@ -147,16 +154,21 @@ func (s *server) mintToken(spec tokenSpec) (string, error) {
 		claims["act"] = spec.act
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
-	token.Header["kid"] = s.key.KID
 	// RFC 9068 §2.1 asks for an explicit access-token media type. Some
 	// validators reject anything but "JWT" (Spring Security 7 does by
 	// default), so the header is switchable via the rfc9068 option.
+	typ := "JWT"
 	if s.cfg.AtJWT() {
-		token.Header["typ"] = "at+jwt"
-	} else {
-		token.Header["typ"] = "JWT"
+		typ = "at+jwt"
 	}
+	return s.sign(claims, typ)
+}
+
+// sign produces an RS256 JWT carrying the server key's kid.
+func (s *server) sign(claims jwt.MapClaims, typ string) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	token.Header["kid"] = s.key.KID
+	token.Header["typ"] = typ
 	return token.SignedString(s.key.Private)
 }
 
