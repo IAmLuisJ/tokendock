@@ -71,7 +71,9 @@ steps:
 ```
 
 The action starts the container, waits for it to be healthy, and exposes
-`issuer`, `token-endpoint`, and `jwks-uri` outputs.
+`issuer`, `token-endpoint`, and `jwks-uri` outputs. Its default image is
+`ghcr.io/iamluisj/tokendock:1`, which tracks the same major version as the
+action rather than following `latest` across majors.
 
 ## Docker Compose
 
