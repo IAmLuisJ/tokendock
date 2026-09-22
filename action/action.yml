@@ -11,10 +11,16 @@ branding:
 inputs:
   image:
     description: TokenDock Docker image to run
-    default: ghcr.io/iamluisj/tokendock:latest
+    default: ghcr.io/iamluisj/tokendock:1
   port:
     description: Host port to expose the server on
     default: "8080"
+  bind-address:
+    description: >-
+      Host address to publish the port on. Defaults to loopback so the token
+      endpoint isn't reachable from the network on self-hosted runners. Set to
+      0.0.0.0 if other containers reach TokenDock through the host's bridge IP.
+    default: 127.0.0.1
   issuer:
     description: Issuer URL embedded in tokens (must match how the app under test reaches the server)
     default: ""
@@ -59,38 +65,59 @@ runs:
   steps:
     - id: start
       shell: bash
+      # Inputs arrive via env, never as expressions inside the script: interpolated
+      # text is parsed as shell, so quotes, $(...) or $$ in a value would
+      # break the command or run code.
+      env:
+        INPUT_IMAGE: ${{ inputs.image }}
+        INPUT_PORT: ${{ inputs.port }}
+        INPUT_BIND_ADDRESS: ${{ inputs.bind-address }}
+        INPUT_ISSUER: ${{ inputs.issuer }}
+        INPUT_CLIENT_ID: ${{ inputs.client-id }}
+        INPUT_CLIENT_SECRET: ${{ inputs.client-secret }}
+        INPUT_SCOPES: ${{ inputs.scopes }}
+        INPUT_AUDIENCE: ${{ inputs.audience }}
+        INPUT_CLIENTS: ${{ inputs.clients }}
+        INPUT_CONFIG_FILE: ${{ inputs.config-file }}
+        INPUT_RFC9068: ${{ inputs.rfc9068 }}
       run: |
         set -euo pipefail
 
-        port="${{ inputs.port }}"
-        issuer="${{ inputs.issuer }}"
+        port="$INPUT_PORT"
+        issuer="$INPUT_ISSUER"
         if [ -z "$issuer" ]; then
           issuer="http://localhost:${port}"
         fi
+        # The issuer is written to $GITHUB_OUTPUT; a newline would forge
+        # additional outputs.
+        if [[ "$issuer" == *$'\n'* || "$issuer" == *$'\r'* ]]; then
+          echo "issuer must be a single line" >&2
+          exit 1
+        fi
 
-        args=(-d --name tokendock -p "${port}:${port}"
+        args=(-d --name tokendock -p "${INPUT_BIND_ADDRESS}:${port}:${port}"
               -e "TOKENDOCK_PORT=${port}"
               -e "TOKENDOCK_ISSUER=${issuer}")
 
-        if [ -n "${{ inputs.rfc9068 }}" ]; then
-          args+=(-e "TOKENDOCK_RFC9068=${{ inputs.rfc9068 }}")
+        if [ -n "$INPUT_RFC9068" ]; then
+          args+=(-e "TOKENDOCK_RFC9068=${INPUT_RFC9068}")
         fi
 
-        if [ -n "${{ inputs.config-file }}" ]; then
-          args+=(-v "$(realpath "${{ inputs.config-file }}"):/etc/tokendock/config.yaml:ro")
+        if [ -n "$INPUT_CONFIG_FILE" ]; then
+          args+=(-v "$(realpath -- "$INPUT_CONFIG_FILE"):/etc/tokendock/config.yaml:ro")
         else
-          if [ -n "${{ inputs.clients }}" ]; then
-            args+=(-e "TOKENDOCK_CLIENTS=${{ inputs.clients }}")
+          if [ -n "$INPUT_CLIENTS" ]; then
+            args+=(-e "TOKENDOCK_CLIENTS=${INPUT_CLIENTS}")
           fi
-          if [ -n "${{ inputs.client-id }}" ]; then
-            args+=(-e "TOKENDOCK_CLIENT_ID=${{ inputs.client-id }}"
-                   -e "TOKENDOCK_CLIENT_SECRET=${{ inputs.client-secret }}")
-            [ -n "${{ inputs.scopes }}" ]   && args+=(-e "TOKENDOCK_SCOPES=${{ inputs.scopes }}")
-            [ -n "${{ inputs.audience }}" ] && args+=(-e "TOKENDOCK_AUDIENCE=${{ inputs.audience }}")
+          if [ -n "$INPUT_CLIENT_ID" ]; then
+            args+=(-e "TOKENDOCK_CLIENT_ID=${INPUT_CLIENT_ID}"
+                   -e "TOKENDOCK_CLIENT_SECRET=${INPUT_CLIENT_SECRET}")
+            [ -n "$INPUT_SCOPES" ]   && args+=(-e "TOKENDOCK_SCOPES=${INPUT_SCOPES}")
+            [ -n "$INPUT_AUDIENCE" ] && args+=(-e "TOKENDOCK_AUDIENCE=${INPUT_AUDIENCE}")
           fi
         fi
 
-        docker run "${args[@]}" "${{ inputs.image }}"
+        docker run "${args[@]}" "$INPUT_IMAGE"
 
         echo "Waiting for TokenDock to become healthy..."
         for i in $(seq 1 30); do

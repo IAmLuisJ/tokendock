@@ -71,7 +71,11 @@ steps:
 ```
 
 The action starts the container, waits for it to be healthy, and exposes
-`issuer`, `token-endpoint`, and `jwks-uri` outputs.
+`issuer`, `token-endpoint`, and `jwks-uri` outputs. It publishes the port on
+`127.0.0.1` only, so a self-hosted runner doesn't serve tokens to its network;
+set `bind-address: 0.0.0.0` if other containers reach TokenDock through the
+host's bridge IP. The default image is `ghcr.io/iamluisj/tokendock:1`, which
+tracks the same major version as the action.
 
 ## Docker Compose
 
@@ -89,7 +93,9 @@ services:
       TOKENDOCK_CLIENT_ID: my-service
       # no TOKENDOCK_CLIENT_SECRET -> any secret is accepted
       TOKENDOCK_AUDIENCE: my-api
-    ports: ["8080:8080"]   # optional: only if the host also needs tokens
+    # optional: only if the host also needs tokens. Binding to loopback keeps
+    # the token endpoint off the network.
+    ports: ["127.0.0.1:8080:8080"]
 
   my-app:
     build: .
