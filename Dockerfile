@@ -1,4 +1,7 @@
-FROM golang:1.26 AS build
+# Pinned by digest, and kept in step with the go directive in go.mod: the
+# official image sets GOTOOLCHAIN=local, so it will not fetch a newer
+# toolchain than it ships with.
+FROM golang:1.26.8@sha256:6c2a5538f964f1c82f97ad14988bf05de100d922d159d0e398b54c7b0ca0c6c9 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
