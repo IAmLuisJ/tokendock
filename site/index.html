@@ -351,7 +351,7 @@
     </div>
     <div class="col">
       <p>Every service you test in CI expects a bearer token signed by your identity provider — which lives behind a VPN, rate-limits you, or simply shouldn't be handed to a build runner. So teams stub out auth, mark those tests <code class="mono">skip</code>, and ship JWT-handling code that has never actually been exercised.</p>
-      <p><strong>TokenDock replaces the identity provider, not your auth code.</strong> It speaks enough real OAuth 2.0 — client credentials grant, JWKS, OIDC discovery — that your app validates its tokens exactly as it would in production. No test flags. No mocked middleware. No code changes.</p>
+      <p><strong>TokenDock replaces the identity provider, not your auth code.</strong> It speaks enough real OAuth 2.0 — client credentials and authorization code grants, JWKS, OIDC discovery — that your app validates its tokens, and runs its login, exactly as it would in production. No test flags. No mocked middleware. No code changes.</p>
       <div class="note"><b>Honest by design</b> — TokenDock signs whatever you configure with an ephemeral key that dies with the container. It is deliberately useless outside a test run.</div>
     </div>
   </div>
@@ -367,7 +367,7 @@
     </li>
     <li>
       <h3>Request a token</h3>
-      <p>Your service or test calls <code>POST /token</code> with its client ID and secret — the standard client credentials grant, Basic or form-body auth, RFC 6749 errors and all.</p>
+      <p>Your service or test calls <code>POST /token</code> with its client ID and secret — the standard client credentials grant, Basic or form-body auth, RFC 6749 errors and all. Browser logins go through <code>/authorize</code> and come straight back with a code.</p>
     </li>
     <li>
       <h3>Validate like production</h3>
@@ -426,7 +426,7 @@ curl -u tokendock:tokendock-secret \
     </li>
     <li>
       <h3>Standards-shaped surface</h3>
-      <p>Client credentials and RFC 8693 token exchange grants, RFC 9068 access tokens (<code class="mono">typ: at+jwt</code>, switchable), OIDC discovery, JWKS with proper <code class="mono">kid</code>, RFC 6749 error responses. Your JWT library already understands it.</p>
+      <p>Client credentials, authorization code (PKCE, OIDC ID tokens), and RFC 8693 token exchange grants, RFC 9068 access tokens (<code class="mono">typ: at+jwt</code>, switchable), OIDC discovery, JWKS with proper <code class="mono">kid</code>, RFC 6749 error responses. Your JWT library already understands it.</p>
     </li>
     <li>
       <h3>Ephemeral keys by default</h3>
@@ -453,8 +453,8 @@ curl -u tokendock:tokendock-secret \
       <tbody>
         <tr><th scope="row">Runtime &amp; image</th><td class="td-us">~4 MB static Go binary <small>no OS layer</small></td><td>~200 MB JVM image <small>Kotlin</small></td></tr>
         <tr><th scope="row">Cold start</th><td class="td-us">Milliseconds</td><td>Seconds <small>JVM startup</small></td></tr>
-        <tr><th scope="row">Grant types</th><td class="td-us">Client credentials + token exchange <small>RFC 8693</small></td><td>Authorization code, token exchange, JWT bearer, refresh &amp; more</td></tr>
-        <tr><th scope="row">Interactive login page</th><td class="td-us">None</td><td>Yes <small>for browser-driven E2E tests</small></td></tr>
+        <tr><th scope="row">Grant types</th><td class="td-us">Client credentials, authorization code, token exchange <small>PKCE · OIDC ID tokens · RFC 8693</small></td><td>Authorization code, token exchange, JWT bearer, refresh &amp; more</td></tr>
+        <tr><th scope="row">Interactive login page</th><td class="td-us">Opt-in <small>by default /authorize approves instantly</small></td><td>Yes <small>for browser-driven E2E tests</small></td></tr>
         <tr><th scope="row">Embed in test code</th><td class="td-us">Container only</td><td>JVM library <small>JUnit-friendly</small></td></tr>
         <tr><th scope="row">Issuers</th><td class="td-us">One per container</td><td>Multiple per instance</td></tr>
         <tr><th scope="row">Configuration</th><td class="td-us">Zero-config default, then env vars or YAML</td><td>JSON or programmatic API</td></tr>
@@ -468,6 +468,7 @@ curl -u tokendock:tokendock-secret \
       <h3>Sail with TokenDock when…</h3>
       <ul>
         <li>You're testing machine-to-machine bearer tokens — services calling services</li>
+        <li>Your browser login tests just need to land signed in as a known user</li>
         <li>You want a service container that's ready before your app finishes booting</li>
         <li>Your stack isn't JVM and a library-mode server buys you nothing</li>
         <li>You'd rather declare clients in six lines of env vars than maintain a config API</li>
@@ -476,8 +477,7 @@ curl -u tokendock:tokendock-secret \
     <div class="them">
       <h3>Sail with mock-oauth2-server when…</h3>
       <ul>
-        <li>Your E2E tests drive a browser through a real login redirect</li>
-        <li>You need authorization code flow or refresh tokens</li>
+        <li>You need refresh tokens, a userinfo endpoint, or the JWT bearer grant</li>
         <li>You're on the JVM and want the server embedded in your JUnit lifecycle</li>
         <li>You need several issuers from one instance</li>
       </ul>

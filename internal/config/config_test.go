@@ -356,3 +356,75 @@ func TestInvalidEnvRFC9068IsError(t *testing.T) {
 		t.Error("want error for non-boolean TOKENDOCK_RFC9068, got nil")
 	}
 }
+
+func TestClientRedirectURIsFromYAML(t *testing.T) {
+	path := writeTempConfig(t, `
+clients:
+  - client_id: web-app
+    redirect_uris:
+      - http://localhost:3000/callback
+      - com.example.app:/oauth2redirect
+`)
+	cfg, err := Load(path, noEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := cfg.Clients[0].RedirectURIs
+	if len(got) != 2 || got[0] != "http://localhost:3000/callback" || got[1] != "com.example.app:/oauth2redirect" {
+		t.Errorf("RedirectURIs = %v", got)
+	}
+}
+
+func TestRelativeRedirectURIIsError(t *testing.T) {
+	path := writeTempConfig(t, `
+clients:
+  - client_id: web-app
+    redirect_uris: [/callback]
+`)
+	if _, err := Load(path, noEnv); err == nil {
+		t.Error("want error for relative redirect URI, got nil")
+	}
+}
+
+func TestRedirectURIWithFragmentIsError(t *testing.T) {
+	_, err := Load("", envFrom(map[string]string{
+		"TOKENDOCK_CLIENTS": `[{"client_id": "spa", "redirect_uris": ["http://localhost:3000/#/callback"]}]`,
+	}))
+	if err == nil {
+		t.Error("want error for redirect URI with a fragment, got nil")
+	}
+}
+
+func TestInteractiveLoginDefaultsToOff(t *testing.T) {
+	cfg, err := Load("", noEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.InteractiveLogin {
+		t.Error("InteractiveLogin = true, want false by default")
+	}
+}
+
+func TestInteractiveLoginFileAndEnv(t *testing.T) {
+	path := writeTempConfig(t, "interactive_login: true\n")
+	cfg, err := Load(path, noEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.InteractiveLogin {
+		t.Error("InteractiveLogin = false, want true from file")
+	}
+	cfg, err = Load(path, envFrom(map[string]string{"TOKENDOCK_INTERACTIVE_LOGIN": "false"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.InteractiveLogin {
+		t.Error("InteractiveLogin = true, want env false to override file")
+	}
+}
+
+func TestInvalidEnvInteractiveLoginIsError(t *testing.T) {
+	if _, err := Load("", envFrom(map[string]string{"TOKENDOCK_INTERACTIVE_LOGIN": "sometimes"})); err == nil {
+		t.Error("want error for non-boolean TOKENDOCK_INTERACTIVE_LOGIN, got nil")
+	}
+}
