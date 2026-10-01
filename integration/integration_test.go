@@ -227,6 +227,71 @@ func TestEndToEndAuthorizationCodeWithPKCE(t *testing.T) {
 	}
 }
 
+// TestEndToEndJWTBearerWithClientAssertion proves the RFC 7523 on-behalf-of
+// shape with the zero-config demo client: a user's token from another issuer
+// is the grant's assertion, the client authenticates with its own JWT instead
+// of a secret, and the issued token validates using only the JWKS endpoint.
+func TestEndToEndJWTBearerWithClientAssertion(t *testing.T) {
+	cfg, err := config.Load("", func(string) (string, bool) { return "", false })
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := keys.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(server.New(cfg, key))
+	defer ts.Close()
+
+	// Neither assertion is signed with anything TokenDock knows.
+	sign := func(claims jwt.MapClaims) string {
+		tok, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte("not-shared-with-tokendock"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return tok
+	}
+	form := url.Values{
+		"grant_type": {"urn:ietf:params:oauth:grant-type:jwt-bearer"},
+		"assertion": {sign(jwt.MapClaims{
+			"iss": "https://upstream-idp.example", "sub": "alice", "roles": []string{"reader"},
+		})},
+		"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
+		"client_assertion": {sign(jwt.MapClaims{
+			"iss": config.DemoClientID, "sub": config.DemoClientID, "aud": cfg.Issuer + "/token",
+		})},
+	}
+	resp, err := http.PostForm(ts.URL+"/token", form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("token request status = %d", resp.StatusCode)
+	}
+	var tr struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
+		t.Fatal(err)
+	}
+
+	claims := jwt.MapClaims{}
+	_, err = jwt.ParseWithClaims(tr.AccessToken, claims, func(tok *jwt.Token) (any, error) {
+		kid, _ := tok.Header["kid"].(string)
+		return fetchJWKSKey(ts.URL+"/.well-known/jwks.json", kid)
+	}, jwt.WithIssuer(cfg.Issuer))
+	if err != nil {
+		t.Fatalf("issued token failed validation against JWKS: %v", err)
+	}
+	if claims["sub"] != "alice" {
+		t.Errorf("sub = %v, want alice (carried from assertion)", claims["sub"])
+	}
+	if roles, _ := claims["roles"].([]any); len(roles) != 1 || roles[0] != "reader" {
+		t.Errorf("roles = %v, want [reader] (carried from assertion)", claims["roles"])
+	}
+}
+
 // fetchJWKSKey resolves a public key by kid from a live JWKS endpoint,
 // independent of the keys package's own encoding.
 func fetchJWKSKey(jwksURL, kid string) (*rsa.PublicKey, error) {
