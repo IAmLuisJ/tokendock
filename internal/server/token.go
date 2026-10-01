@@ -39,10 +39,13 @@ func (s *server) handleToken(w http.ResponseWriter, r *http.Request) {
 		s.handleAuthorizationCode(w, r, client)
 	case grantTypeTokenExchange:
 		s.handleTokenExchange(w, r, client)
+	case grantTypeJWTBearer:
+		s.handleJWTBearer(w, r, client)
 	case "":
 		writeOAuthError(w, http.StatusBadRequest, "invalid_request", "grant_type is required")
 	default:
-		writeOAuthError(w, http.StatusBadRequest, "unsupported_grant_type", "supported: client_credentials, authorization_code, "+grantTypeTokenExchange)
+		writeOAuthError(w, http.StatusBadRequest, "unsupported_grant_type",
+			"supported: client_credentials, authorization_code, "+grantTypeTokenExchange+", "+grantTypeJWTBearer)
 	}
 }
 
