@@ -1,0 +1,139 @@
+name: Cut release
+
+# Run from the Actions tab: pick the version and the release goes out as
+# tag -> image on GHCR -> GitHub release -> moving major tag.
+#
+# Tags pushed with GITHUB_TOKEN never trigger other workflows, so this calls
+# release.yml directly instead of relying on its tag trigger.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, without the v (e.g. 1.7.0, or 2.0.0-rc.1)
+        required: true
+        type: string
+      summary:
+        description: Tag message after "vX.Y.Z:" (e.g. "authorization code grant with PKCE")
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cut-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.vars.outputs.tag }}
+      major_tag: ${{ steps.vars.outputs.major_tag }}
+      prerelease: ${{ steps.vars.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate version
+        id: vars
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          VERSION="${VERSION#v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::'$VERSION' is not a semver version like 1.7.0 or 2.0.0-rc.1"
+            exit 1
+          fi
+          if [ "${GITHUB_REF_NAME}" != "${{ github.event.repository.default_branch }}" ]; then
+            echo "::error::Run this workflow from the default branch, not ${GITHUB_REF_NAME}"
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/v${VERSION}" >/dev/null; then
+            echo "::error::Tag v${VERSION} already exists"
+            exit 1
+          fi
+          {
+            echo "tag=v${VERSION}"
+            echo "major_tag=v${VERSION%%.*}"
+            case "$VERSION" in *-*) echo "prerelease=true" ;; *) echo "prerelease=false" ;; esac
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test ./...
+
+      - name: Tag and push
+        env:
+          TAG: ${{ steps.vars.outputs.tag }}
+          SUMMARY: ${{ inputs.summary }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "${TAG}: ${SUMMARY}"
+          git push origin "refs/tags/${TAG}"
+
+  publish:
+    needs: prepare
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}
+
+  finalize:
+    needs: [prepare, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      MAJOR_TAG: ${{ needs.prepare.outputs.major_tag }}
+      PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - name: Create GitHub release
+        run: |
+          set -euo pipefail
+          if [ "$PRERELEASE" = "true" ]; then
+            flags="--prerelease"
+          else
+            flags="--latest"
+          fi
+          gh release create "$TAG" --verify-tag --generate-notes --title "$TAG" $flags
+
+      # Prereleases never move the major tag, so `@v1` users only get stable builds.
+      - name: Move the major tag
+        if: needs.prepare.outputs.prerelease == 'false'
+        run: |
+          set -euo pipefail
+          git tag -f "$MAJOR_TAG" "$TAG"
+          git push --force origin "refs/tags/${MAJOR_TAG}"
+
+  # A tag with no image behind it would burn the version number, so take it
+  # back if the build failed. Nothing public points at it yet.
+  rollback:
+    needs: [prepare, publish]
+    if: failure() && needs.prepare.result == 'success' && needs.publish.result != 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Delete the unpublished tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/${TAG}"
