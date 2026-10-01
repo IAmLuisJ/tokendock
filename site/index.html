@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TokenDock — a fake OAuth 2.0 authorization server for CI</title>
-<meta name="description" content="TokenDock issues real RS256-signed JWTs from fake credentials, so your CI can test JWT-protected flows without reaching your real identity provider. ~10MB image, starts in milliseconds.">
+<meta name="description" content="TokenDock issues real RS256-signed JWTs from fake credentials, so your CI can test JWT-protected flows and browser logins without reaching your real identity provider. ~4 MB image, starts in milliseconds.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Allerta+Stencil&family=Archivo:wght@400;500;600;700;800&family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
@@ -218,6 +218,56 @@
     white-space: nowrap;
   }
 
+  /* ---------- browser login: boarding pass ---------- */
+  .boarding .lede { color: var(--ink-soft); max-width: 58ch; margin-top: 1.2rem; }
+  .boarding-grid { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(2rem, 5vw, 4rem); margin-top: 2.5rem; align-items: start; }
+  .route { margin-top: 0; }
+  .route li { grid-template-columns: 3.5rem 1fr; gap: 0.3rem 1.25rem; padding-block: 1.2rem; }
+  .route li p { grid-column: 2; text-wrap: pretty; }
+
+  .login-preview { min-width: 0; }
+  .login-preview figcaption {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--rope);
+    margin-bottom: 0.7rem;
+  }
+  /* A faithful miniature of the page /authorize serves with interactive login on. */
+  .browser { border: 2px solid var(--ink); background: var(--paper); }
+  .browser-bar {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.72rem;
+    color: var(--ink-soft);
+    background: var(--paper-deep);
+    border-bottom: 1px solid var(--ink);
+    padding: 0.4rem 0.75rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .login-mock { padding: clamp(1rem, 4vw, 1.75rem); }
+  .lm-card {
+    max-width: 19rem;
+    margin-inline: auto;
+    border: 2px solid var(--ink);
+    padding: 1.2rem 1.1rem;
+    font: 0.88rem/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .lm-flag { font: 600 0.6rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.12em; text-transform: uppercase; color: var(--rust); margin-bottom: 0.45rem; }
+  .lm-title { font-weight: 700; font-size: 1.1rem; line-height: 1.2; margin-bottom: 0.9rem; }
+  .lm-label { font-weight: 600; margin-bottom: 0.3rem; }
+  .lm-input { border: 1px solid var(--ink); padding: 0.4rem 0.6rem; }
+  .lm-hint { font-size: 0.72rem; color: var(--ink-soft); margin: 0.35rem 0 0.9rem; }
+  .lm-button { background: var(--ink); color: var(--paper); font-weight: 600; text-align: center; padding: 0.5rem; }
+  .login-preview .note-line { font-size: 0.92rem; color: var(--ink-soft); margin-top: 1.1rem; }
+  .login-preview .note-line code { font-family: "IBM Plex Mono", monospace; font-size: 0.85em; color: var(--ink); overflow-wrap: anywhere; }
+  .login-preview pre { color: var(--code-ink); margin-top: 0.7rem; }
+
+  .boarding-facts { margin-top: 2.8rem; grid-template-columns: repeat(4, 1fr); }
+  .boarding-facts > div:first-child { padding-left: 0; }
+
   /* ---------- quickstart ---------- */
   .dockside { background: var(--ink); color: var(--code-ink); position: relative; }
   .dockside::before, .dockside::after {
@@ -307,7 +357,10 @@
 
   /* ---------- responsive ---------- */
   @media (max-width: 780px) {
-    .split, .quay { grid-template-columns: 1fr; }
+    .split, .quay, .boarding-grid { grid-template-columns: 1fr; }
+    .boarding-facts { grid-template-columns: 1fr 1fr; }
+    .boarding-facts > div:nth-child(odd) { padding-left: 0; }
+    .boarding-facts > div:nth-child(even) { border-right: none; }
     .cargo { columns: 1; }
     .lading li { grid-template-columns: 3rem 1fr; }
     .lading li p { grid-column: 2; }
@@ -329,7 +382,7 @@
   <p class="flag rise">Fake OAuth 2.0 authorization server · for CI</p>
   <h1 class="stencil rise">Token<span class="dock">dock</span></h1>
   <div class="stamp" aria-hidden="true">Test double<br>not for production</div>
-  <p class="lede rise">Your pipeline can't reach your real identity provider. TokenDock issues <strong>real RS256-signed JWTs</strong> from fake credentials — so the app under test validates tokens with its normal middleware, and your JWT-protected flows finally run in CI.</p>
+  <p class="lede rise">Your pipeline can't reach your real identity provider. TokenDock issues <strong>real RS256-signed JWTs</strong> from fake credentials — so the app under test validates tokens with its normal middleware, and your JWT-protected flows, browser logins included, finally run in CI.</p>
   <div class="cta-row rise">
     <a class="btn" href="https://github.com/IAmLuisJ/tokendock">View on GitHub</a>
     <a class="btn ghost mono" href="#quickstart">docker run · 30-second setup</a>
@@ -367,13 +420,69 @@
     </li>
     <li>
       <h3>Request a token</h3>
-      <p>Your service or test calls <code>POST /token</code> with its client ID and secret — the standard client credentials grant, Basic or form-body auth, RFC 6749 errors and all. Browser logins go through <code>/authorize</code> and come straight back with a code.</p>
+      <p>Your service or test calls <code>POST /token</code> with its client ID and secret — the standard client credentials grant, Basic or form-body auth, RFC 6749 errors and all.</p>
     </li>
     <li>
       <h3>Validate like production</h3>
       <p>The app under test discovers signing keys from <code>/.well-known/jwks.json</code> via OIDC discovery and verifies the RS256 signature — the same code path it runs in production.</p>
     </li>
   </ol>
+</section>
+
+<section class="wrap boarding" style="padding-top: 0;" aria-labelledby="boarding-title">
+  <p class="kicker">Boarding pass · new in v1.6</p>
+  <h2 id="boarding-title">Browser logins, waved aboard</h2>
+  <p class="lede">Point your app's OIDC login at TokenDock like any identity provider. It approves every sign-in on the spot and sends the browser straight back, so Playwright and Cypress tests have nothing to click.</p>
+
+  <div class="boarding-grid">
+    <ol class="lading route">
+      <li>
+        <h3>Your app redirects to TokenDock</h3>
+        <p>The browser lands on <code>/authorize</code>, as it would at your real provider. Send <code>login_hint</code> to choose who signs in.</p>
+      </li>
+      <li>
+        <h3>TokenDock sends it straight back</h3>
+        <p>No login screen, nothing to click: the browser returns to your callback with a <code>code</code> and your <code>state</code>.</p>
+      </li>
+      <li>
+        <h3>Your backend redeems the code</h3>
+        <p>A normal <code>POST /token</code>. PKCE verifiers are checked, and each code works once.</p>
+      </li>
+      <li>
+        <h3>Tokens your app already trusts</h3>
+        <p>An access token, plus an OIDC ID token when you ask for <code>openid</code>. Both verify against the JWKS.</p>
+      </li>
+    </ol>
+
+    <figure class="login-preview">
+      <figcaption>Optional login page</figcaption>
+      <div class="browser" role="img" aria-label="Preview of the optional TokenDock login page: a Subject field filled in with alice, and a Sign in button.">
+        <div class="browser-bar" aria-hidden="true">localhost:8080/authorize?client_id=web-app&amp;login_hint=alice</div>
+        <div class="login-mock" aria-hidden="true">
+          <div class="lm-card">
+            <p class="lm-flag">TokenDock · test double</p>
+            <p class="lm-title">Sign in to web-app</p>
+            <p class="lm-label">Subject</p>
+            <p class="lm-input">alice</p>
+            <p class="lm-hint">Becomes the <code>sub</code> claim. There is no password: any subject signs in.</p>
+            <p class="lm-button">Sign in</p>
+          </div>
+        </div>
+      </div>
+      <p class="note-line">When a test should pick the user on screen, set <code>TOKENDOCK_INTERACTIVE_LOGIN=true</code> and fill in one field:</p>
+<pre><code>await page.getByLabel(<span class="c-str">"Subject"</span>).fill(<span class="c-str">"alice"</span>);
+await page
+  .getByRole(<span class="c-str">"button"</span>, { name: <span class="c-str">"Sign in"</span> })
+  .click();</code></pre>
+    </figure>
+  </div>
+
+  <dl class="manifest boarding-facts">
+    <div><dt>PKCE</dt><dd>S256 <small>or plain</small></dd></div>
+    <div><dt>ID tokens</dt><dd>OIDC <small>typ: JWT</small></dd></div>
+    <div><dt>SPAs</dt><dd>Public clients <small>with CORS</small></dd></div>
+    <div><dt>Redirect URIs</dt><dd>Any <small>or an exact list</small></dd></div>
+  </dl>
 </section>
 
 <div class="dockside" id="quickstart">
@@ -423,6 +532,10 @@ curl -u tokendock:tokendock-secret \
     <li>
       <h3>Custom claims per client</h3>
       <p>Audience, subject, lifetime, and arbitrary claims like <code class="mono">roles</code> — so you can test authorization logic, not just authentication.</p>
+    </li>
+    <li>
+      <h3>Browser login built in</h3>
+      <p>The authorization code flow with PKCE and OIDC ID tokens. Sign-ins are approved instantly, or turn on a one-field login page to pick the user.</p>
     </li>
     <li>
       <h3>Standards-shaped surface</h3>
