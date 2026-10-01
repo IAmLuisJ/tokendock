@@ -261,9 +261,28 @@ With the `openid` scope the response includes an `id_token`: `iss`, `sub`,
 `aud` (the client ID), `iat`, `exp`, `auth_time`, `nonce` when the app sent
 one, and the client's custom claims. It is always signed with `typ: JWT`,
 never `at+jwt`, whatever `rfc9068` says — RFC 9068 reserves `at+jwt` for
-access tokens so an ID token can't be replayed as one. There is no userinfo
-endpoint and no refresh token; apps read the user from the ID token and sign
-in again when the access token expires.
+access tokens so an ID token can't be replayed as one.
+
+With the `offline_access` scope the response also includes a
+`refresh_token`. Redeem it at `/token` with `grant_type=refresh_token`, using
+the same client authentication:
+
+- The response carries a fresh access token, an `id_token` when `openid` is in
+  scope (same `iss`, `sub`, `aud` and `auth_time` as the original; no
+  `nonce`), and a **new** `refresh_token`.
+- Refresh tokens rotate: every redemption attempt spends the token, so
+  presenting it again is `invalid_grant`. So is a token issued to another
+  client, or one unused for 24 hours.
+- An optional `scope` narrows the new access token to a subset of the
+  original grant (anything more is `invalid_scope`). The rotated refresh
+  token keeps the original scope.
+- Refresh tokens live in memory, so restarting TokenDock invalidates them.
+
+`/userinfo` (advertised as `userinfo_endpoint` in discovery) takes a
+TokenDock-issued access token as `Authorization: Bearer`. It always returns
+`sub`, and adds the token's custom claims (the client's `claims`) when the
+token has the `openid` scope. A missing, expired, foreign-issuer, or
+foreign-signed token gets `401` with `WWW-Authenticate: Bearer`.
 
 ### The browser must reach the issuer too
 

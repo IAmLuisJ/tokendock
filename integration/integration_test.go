@@ -227,6 +227,117 @@ func TestEndToEndAuthorizationCodeWithPKCE(t *testing.T) {
 	}
 }
 
+// TestEndToEndRefreshAndUserinfo proves the session-keeping half of a browser
+// login with the zero-config demo client: offline_access yields a refresh
+// token, refreshing rotates it, and the refreshed access token reads the
+// user's profile from the userinfo endpoint advertised by discovery.
+func TestEndToEndRefreshAndUserinfo(t *testing.T) {
+	cfg, err := config.Load("", func(string) (string, bool) { return "", false })
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := keys.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(server.New(cfg, key))
+	defer ts.Close()
+
+	var discovery struct {
+		UserinfoEndpoint string `json:"userinfo_endpoint"`
+	}
+	getJSON(t, ts.URL+"/.well-known/openid-configuration", &discovery)
+	if discovery.UserinfoEndpoint != cfg.Issuer+"/userinfo" {
+		t.Fatalf("userinfo_endpoint = %q", discovery.UserinfoEndpoint)
+	}
+
+	const redirectURI = "http://localhost:3000/callback"
+	browser := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := browser.Get(ts.URL + "/authorize?" + url.Values{
+		"response_type": {"code"},
+		"client_id":     {config.DemoClientID},
+		"redirect_uri":  {redirectURI},
+		"scope":         {"openid profile offline_access"},
+		"login_hint":    {"alice"},
+	}.Encode())
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	loc, err := url.Parse(resp.Header.Get("Location"))
+	if err != nil || resp.StatusCode != http.StatusFound {
+		t.Fatalf("authorize: status = %d, Location = %q", resp.StatusCode, resp.Header.Get("Location"))
+	}
+
+	type tokens struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		Error        string `json:"error"`
+	}
+	postToken := func(form url.Values) (int, tokens) {
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/token", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.SetBasicAuth(config.DemoClientID, config.DemoClientSecret)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var body tokens
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		return resp.StatusCode, body
+	}
+
+	status, login := postToken(url.Values{
+		"grant_type":   {"authorization_code"},
+		"code":         {loc.Query().Get("code")},
+		"redirect_uri": {redirectURI},
+	})
+	if status != http.StatusOK || login.RefreshToken == "" {
+		t.Fatalf("code redemption: status = %d, body = %+v", status, login)
+	}
+
+	refreshForm := func(rt string) url.Values {
+		return url.Values{"grant_type": {"refresh_token"}, "refresh_token": {rt}}
+	}
+	status, refreshed := postToken(refreshForm(login.RefreshToken))
+	if status != http.StatusOK || refreshed.RefreshToken == "" || refreshed.RefreshToken == login.RefreshToken {
+		t.Fatalf("refresh: status = %d, body = %+v", status, refreshed)
+	}
+	if status, body := postToken(refreshForm(login.RefreshToken)); status != http.StatusBadRequest || body.Error != "invalid_grant" {
+		t.Errorf("reused refresh token: status = %d, error = %q, want invalid_grant", status, body.Error)
+	}
+
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/userinfo", nil)
+	req.Header.Set("Authorization", "Bearer "+refreshed.AccessToken)
+	userResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer userResp.Body.Close()
+	var profile map[string]any
+	if err := json.NewDecoder(userResp.Body).Decode(&profile); err != nil {
+		t.Fatal(err)
+	}
+	if userResp.StatusCode != http.StatusOK || profile["sub"] != "alice" {
+		t.Errorf("userinfo: status = %d, body = %v", userResp.StatusCode, profile)
+	}
+}
+
+func getJSON(t *testing.T, target string, into any) {
+	t.Helper()
+	resp, err := http.Get(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(into); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // fetchJWKSKey resolves a public key by kid from a live JWKS endpoint,
 // independent of the keys package's own encoding.
 func fetchJWKSKey(jwksURL, kid string) (*rsa.PublicKey, error) {

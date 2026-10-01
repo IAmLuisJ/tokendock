@@ -1,6 +1,6 @@
 // Package server implements TokenDock's HTTP endpoints: the token endpoint
-// (client credentials, authorization code, token exchange), the
-// authorization endpoint, OIDC discovery, JWKS, and health.
+// (client credentials, authorization code, refresh token, token exchange),
+// the authorization endpoint, userinfo, OIDC discovery, JWKS, and health.
 package server
 
 import (
@@ -12,19 +12,27 @@ import (
 )
 
 type server struct {
-	cfg   *config.Config
-	key   *keys.Key
-	codes *codeStore
+	cfg           *config.Config
+	key           *keys.Key
+	codes         *codeStore
+	refreshTokens *codeStore
 }
 
 // New returns the handler serving all TokenDock endpoints.
 func New(cfg *config.Config, key *keys.Key) http.Handler {
-	s := &server{cfg: cfg, key: key, codes: newCodeStore()}
+	s := &server{
+		cfg:           cfg,
+		key:           key,
+		codes:         newCodeStore(codeLifetime),
+		refreshTokens: newCodeStore(refreshLifetime),
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /token", s.handleToken)
 	mux.HandleFunc("GET /authorize", s.handleAuthorize)
 	mux.HandleFunc("POST /authorize", s.handleAuthorize)
 	mux.HandleFunc("POST /login", s.handleLogin)
+	mux.HandleFunc("GET /userinfo", s.handleUserinfo)
+	mux.HandleFunc("POST /userinfo", s.handleUserinfo)
 	mux.HandleFunc("GET /.well-known/openid-configuration", s.handleDiscovery)
 	mux.HandleFunc("GET /.well-known/jwks.json", s.handleJWKS)
 	mux.HandleFunc("GET /health", s.handleHealth)
@@ -37,8 +45,9 @@ func (s *server) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 		"issuer":                                s.cfg.Issuer,
 		"authorization_endpoint":                s.cfg.Issuer + "/authorize",
 		"token_endpoint":                        s.cfg.Issuer + "/token",
+		"userinfo_endpoint":                     s.cfg.Issuer + "/userinfo",
 		"jwks_uri":                              s.cfg.Issuer + "/.well-known/jwks.json",
-		"grant_types_supported":                 []string{"client_credentials", grantTypeTokenExchange, "authorization_code"},
+		"grant_types_supported":                 []string{"client_credentials", grantTypeTokenExchange, "authorization_code", "refresh_token"},
 		"token_endpoint_auth_methods_supported": []string{"client_secret_basic", "client_secret_post", "none"},
 		"id_token_signing_alg_values_supported": []string{"RS256"},
 		"response_types_supported":              []string{"code"},
