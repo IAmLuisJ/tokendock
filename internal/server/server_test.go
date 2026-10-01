@@ -385,12 +385,21 @@ func TestOpenIDConfiguration(t *testing.T) {
 		t.Errorf("authorization_endpoint = %v", doc["authorization_endpoint"])
 	}
 	for field, want := range map[string][]string{
-		"grant_types_supported":                 {"client_credentials", "urn:ietf:params:oauth:grant-type:token-exchange", "authorization_code"},
-		"response_types_supported":              {"code"},
-		"response_modes_supported":              {"query"},
-		"subject_types_supported":               {"public"},
-		"code_challenge_methods_supported":      {"S256", "plain"},
-		"token_endpoint_auth_methods_supported": {"client_secret_basic", "client_secret_post", "none"},
+		"grant_types_supported": {
+			"client_credentials", "urn:ietf:params:oauth:grant-type:token-exchange", "authorization_code",
+			"urn:ietf:params:oauth:grant-type:jwt-bearer",
+		},
+		"response_types_supported":         {"code"},
+		"response_modes_supported":         {"query"},
+		"subject_types_supported":          {"public"},
+		"code_challenge_methods_supported": {"S256", "plain"},
+		"token_endpoint_auth_methods_supported": {
+			"client_secret_basic", "client_secret_post", "none", "private_key_jwt", "client_secret_jwt",
+		},
+		"token_endpoint_auth_signing_alg_values_supported": {
+			"RS256", "RS384", "RS512", "PS256", "PS384", "PS512",
+			"ES256", "ES384", "ES512", "EdDSA", "HS256", "HS384", "HS512",
+		},
 		"id_token_signing_alg_values_supported": {"RS256"},
 	} {
 		if got := stringList(doc, field); !slices.Equal(got, want) {

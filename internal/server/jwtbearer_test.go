@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -270,5 +271,37 @@ func TestJWTBearerWithClientAssertion(t *testing.T) {
 	claims := parseToken(t, body.AccessToken, key)
 	if claims["sub"] != "alice" || claims["aud"] != "my-api" {
 		t.Errorf("sub = %v, aud = %v, want alice for my-api", claims["sub"], claims["aud"])
+	}
+}
+
+// TestClientAssertionAcceptsEveryAdvertisedAlg keeps discovery honest: an
+// assertion with any alg in token_endpoint_auth_signing_alg_values_supported
+// authenticates. The signature is junk because it is never verified.
+func TestClientAssertionAcceptsEveryAdvertisedAlg(t *testing.T) {
+	ts, _, _ := testServer(t)
+	resp, err := http.Get(ts.URL + "/.well-known/openid-configuration")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var doc map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
+		t.Fatal(err)
+	}
+	algs := stringList(doc, "token_endpoint_auth_signing_alg_values_supported")
+	if len(algs) == 0 {
+		t.Fatal("no token_endpoint_auth_signing_alg_values_supported advertised")
+	}
+	b64 := base64.RawURLEncoding.EncodeToString
+	for _, alg := range algs {
+		t.Run(alg, func(t *testing.T) {
+			form := clientAssertionForm(t)
+			form.Set("client_assertion", b64([]byte(`{"alg":"`+alg+`","typ":"JWT"}`))+"."+
+				b64([]byte(`{"sub":"my-service"}`))+"."+b64([]byte("junk")))
+			resp, body := requestToken(t, ts, form, [2]string{})
+			if resp.StatusCode != http.StatusOK {
+				t.Errorf("status = %d, error = %q", resp.StatusCode, body.Error)
+			}
+		})
 	}
 }
