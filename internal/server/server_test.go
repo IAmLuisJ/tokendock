@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
@@ -15,6 +16,12 @@ import (
 )
 
 func testServer(t *testing.T) (*httptest.Server, *keys.Key, *config.Config) {
+	t.Helper()
+	return testServerWith(t, nil)
+}
+
+// testServerWith is testServer with mutate applied to the config first.
+func testServerWith(t *testing.T, mutate func(*config.Config)) (*httptest.Server, *keys.Key, *config.Config) {
 	t.Helper()
 	key, err := keys.Generate()
 	if err != nil {
@@ -43,7 +50,23 @@ func testServer(t *testing.T) (*httptest.Server, *keys.Key, *config.Config) {
 				Subject:       "secretless",
 				TokenLifetime: 3600,
 			},
+			{
+				ClientID:      "web-app",
+				ClientSecret:  "web-secret",
+				Subject:       "web-app",
+				TokenLifetime: 300,
+				RedirectURIs:  []string{"https://app.test/callback", "https://app.test/alt"},
+			},
+			{
+				ClientID:      "spa",
+				Subject:       "spa",
+				TokenLifetime: 3600,
+				RedirectURIs:  []string{"https://spa.test/cb"},
+			},
 		},
+	}
+	if mutate != nil {
+		mutate(cfg)
 	}
 	ts := httptest.NewServer(New(cfg, key))
 	t.Cleanup(ts.Close)
@@ -55,6 +78,7 @@ type tokenResponse struct {
 	TokenType   string `json:"token_type"`
 	ExpiresIn   int    `json:"expires_in"`
 	Scope       string `json:"scope"`
+	IDToken     string `json:"id_token"`
 	Error       string `json:"error"`
 }
 
@@ -357,10 +381,33 @@ func TestOpenIDConfiguration(t *testing.T) {
 	if doc["jwks_uri"] != "http://tokendock.test/.well-known/jwks.json" {
 		t.Errorf("jwks_uri = %v", doc["jwks_uri"])
 	}
-	grants, _ := doc["grant_types_supported"].([]any)
-	if len(grants) != 2 || grants[0] != "client_credentials" || grants[1] != "urn:ietf:params:oauth:grant-type:token-exchange" {
-		t.Errorf("grant_types_supported = %v", doc["grant_types_supported"])
+	if doc["authorization_endpoint"] != "http://tokendock.test/authorize" {
+		t.Errorf("authorization_endpoint = %v", doc["authorization_endpoint"])
 	}
+	for field, want := range map[string][]string{
+		"grant_types_supported":                 {"client_credentials", "urn:ietf:params:oauth:grant-type:token-exchange", "authorization_code"},
+		"response_types_supported":              {"code"},
+		"response_modes_supported":              {"query"},
+		"subject_types_supported":               {"public"},
+		"code_challenge_methods_supported":      {"S256", "plain"},
+		"token_endpoint_auth_methods_supported": {"client_secret_basic", "client_secret_post", "none"},
+		"id_token_signing_alg_values_supported": {"RS256"},
+	} {
+		if got := stringList(doc, field); !slices.Equal(got, want) {
+			t.Errorf("%s = %v, want %v", field, got, want)
+		}
+	}
+}
+
+// stringList reads a JSON array of strings from a decoded document.
+func stringList(doc map[string]any, field string) []string {
+	var out []string
+	items, _ := doc[field].([]any)
+	for _, item := range items {
+		s, _ := item.(string)
+		out = append(out, s)
+	}
+	return out
 }
 
 func TestJWKSEndpoint(t *testing.T) {
@@ -436,4 +483,17 @@ func TestRFC9068DisabledIssuesPlainJWTTyp(t *testing.T) {
 		t.Fatalf("unexpected error %q", body.Error)
 	}
 	parseTokenTyp(t, body.AccessToken, key, "JWT")
+}
+
+func TestOIDCScopesBypassScopeAllowlist(t *testing.T) {
+	ts, _, _ := testServer(t)
+	scope := "openid profile email address phone offline_access read"
+	form := url.Values{"grant_type": {"client_credentials"}, "scope": {scope}}
+	resp, body := requestToken(t, ts, form, [2]string{"my-service", "ci-secret"})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, body = %+v — OIDC scopes must be allowed for a scoped client", resp.StatusCode, body)
+	}
+	if body.Scope != scope {
+		t.Errorf("scope = %q, want %q", body.Scope, scope)
+	}
 }

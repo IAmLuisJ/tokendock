@@ -230,6 +230,108 @@ options.TokenValidationParameters.ValidTypes = ["at+jwt"];
 
 ---
 
+## Browser login (authorization code)
+
+Everything above treats the app as a **resource server** validating bearer
+tokens. If it also signs users in through a browser redirect — it is an
+**OAuth client** using the authorization code flow — TokenDock serves that
+too: `/authorize` approves the login and redirects straight back, so browser
+tests have nothing to click. The rules are in
+[Authorization code and browser login](configuration.md#authorization-code-and-browser-login).
+
+TokenDock side, for a web app client:
+
+```yaml
+  tokendock:
+    image: ghcr.io/iamluisj/tokendock:latest
+    ports: ["8080:8080"]
+    environment:
+      TOKENDOCK_ISSUER: http://localhost:8080
+      TOKENDOCK_CLIENTS: |
+        - client_id: web-app        # secretless: any secret accepted
+          subject: alice            # who signs in unless the app sends login_hint
+          claims:
+            name: Alice Example
+            email: alice@example.com
+```
+
+### Spring Boot `oauth2Login`
+
+Production config registers the real provider:
+
+```yaml
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          corp:
+            client-id: web-app
+            client-secret: ${OIDC_CLIENT_SECRET}
+            scope: openid,profile,email
+        provider:
+          corp:
+            issuer-uri: https://auth.mycompany.com/realms/prod
+```
+
+In CI, with the app and the browser both on the runner, override the issuer —
+and give the secret any value, since TokenDock's secretless client accepts it:
+
+```sh
+export SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_CORP_ISSUERURI=http://localhost:8080
+export OIDC_CLIENT_SECRET=anything
+```
+
+Spring discovers `/authorize`, `/token`, and the JWKS from the issuer and
+validates the ID token's `iss`, `aud`, and `nonce` — all of which TokenDock
+issues. Keep `openid` in the scopes: without it Spring falls back to plain
+OAuth2 login, which requires a userinfo endpoint TokenDock doesn't serve.
+
+**When the app runs in a container and the browser doesn't**, they need
+different hosts for the same TokenDock: the browser follows the authorization
+URL, the app calls the token endpoint. Keep the issuer on the internal name
+and override only the browser-facing URL — Spring applies explicitly set
+provider URIs over the discovered ones:
+
+```yaml
+  tokendock:
+    environment:
+      TOKENDOCK_ISSUER: http://tokendock:8080
+    ports: ["8080:8080"]
+
+  my-app:
+    environment:
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_CORP_ISSUERURI: http://tokendock:8080
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_CORP_AUTHORIZATIONURI: http://localhost:8080/authorize
+```
+
+### Choosing the user in browser tests
+
+- **Per login, no UI:** have the app pass `login_hint` — for example Auth.js
+  `signIn("corp", {}, { login_hint: "alice" })` or oidc-client-ts
+  `signinRedirect({ login_hint: "alice" })`. TokenDock signs that subject in.
+- **On a login page:** set `TOKENDOCK_INTERACTIVE_LOGIN=true` and drive the
+  form:
+
+```ts
+await page.goto("http://localhost:3000/");        // the app redirects to TokenDock
+await page.getByLabel("Subject").fill("alice");
+await page.getByRole("button", { name: "Sign in" }).click();
+await expect(page).toHaveURL(/localhost:3000/);   // back in the app, signed in
+```
+
+Either way the user's custom claims come from the client's config, so users
+who need different roles need different clients.
+
+### SPAs
+
+Browser-only apps are public clients: define them without a `client_secret`
+and use PKCE, which current SPA libraries do by default. TokenDock allows
+cross-origin requests to discovery, `/token`, and the JWKS, so the SPA's
+origin needs no extra configuration.
+
+---
+
 ## Checklist when it doesn't work
 
 - **`iss` mismatch** — the most common failure. The app's configured issuer,
@@ -245,3 +347,9 @@ options.TokenValidationParameters.ValidTypes = ["at+jwt"];
 - **HTTPS required** — some stacks refuse plain-HTTP issuers outside dev
   profiles (ASP.NET's `RequireHttpsMetadata`); relax that for the test
   environment only.
+- **Browser login stalls on an unreachable host** — the browser follows the
+  authorization URL from discovery, which uses the issuer's host. See
+  [Browser login](#browser-login-authorization-code) for container setups.
+- **`redirect_uri is not registered for this client`** — the client lists
+  `redirect_uris`, and the app's callback URL must match one exactly: scheme,
+  host, port, and path.

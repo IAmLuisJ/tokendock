@@ -1,8 +1,8 @@
 module github.com/IAmLuisJ/tokendock
 
-go 1.26.5
+go 1.26.8
 
 require (
-	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.1
+	gopkg.in/yaml.v3 v3.0.1
 )

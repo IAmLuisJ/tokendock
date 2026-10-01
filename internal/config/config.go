@@ -5,6 +5,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -29,6 +30,7 @@ type Client struct {
 	Subject       string         `yaml:"subject"`
 	TokenLifetime int            `yaml:"token_lifetime"`
 	Claims        map[string]any `yaml:"claims"`
+	RedirectURIs  []string       `yaml:"redirect_uris"`
 }
 
 // Config is the full server configuration after merging all layers.
@@ -42,6 +44,10 @@ type Config struct {
 	// "at+jwt" (RFC 9068) when enabled, plain "JWT" when disabled. Nil means
 	// unset, which AtJWT treats as enabled.
 	RFC9068 *bool `yaml:"rfc9068"`
+
+	// InteractiveLogin makes /authorize show a login page where the tester
+	// types the subject, instead of approving every request immediately.
+	InteractiveLogin bool `yaml:"interactive_login"`
 
 	// DemoClient is true when no clients were configured and the built-in
 	// demo client was injected; main logs a loud warning in that case.
@@ -101,6 +107,13 @@ func Load(path string, env EnvLookup) (*Config, error) {
 		if c.TokenLifetime == 0 {
 			c.TokenLifetime = DefaultTokenLifetime
 		}
+		// Registered redirect URIs are matched exactly at /authorize, so a
+		// malformed one could never match; fail at startup instead.
+		for _, uri := range c.RedirectURIs {
+			if err := ValidateRedirectURI(uri); err != nil {
+				return nil, fmt.Errorf("client %q: redirect_uris: %w", c.ClientID, err)
+			}
+		}
 	}
 
 	return cfg, nil
@@ -126,6 +139,13 @@ func applyEnv(cfg *Config, env EnvLookup) error {
 			return fmt.Errorf("TOKENDOCK_RFC9068 %q is not a boolean: %w", v, err)
 		}
 		cfg.RFC9068 = &b
+	}
+	if v, ok := env("TOKENDOCK_INTERACTIVE_LOGIN"); ok {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return fmt.Errorf("TOKENDOCK_INTERACTIVE_LOGIN %q is not a boolean: %w", v, err)
+		}
+		cfg.InteractiveLogin = b
 	}
 
 	// TOKENDOCK_CLIENTS holds an inline YAML/JSON list of clients — the
@@ -158,5 +178,17 @@ func applyEnv(cfg *Config, env EnvLookup) error {
 		client.Audience = v
 	}
 	cfg.Clients = append(cfg.Clients, client)
+	return nil
+}
+
+// ValidateRedirectURI checks the RFC 6749 §3.1.2 shape of a redirection
+// endpoint: an absolute URI without a fragment.
+func ValidateRedirectURI(uri string) error {
+	if u, err := url.Parse(uri); err != nil || !u.IsAbs() {
+		return fmt.Errorf("%q is not an absolute URI", uri)
+	}
+	if strings.Contains(uri, "#") {
+		return fmt.Errorf("%q must not contain a fragment", uri)
+	}
 	return nil
 }
