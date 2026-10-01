@@ -10,8 +10,13 @@ import (
 // maximum RFC 6749 §4.1.2 recommends.
 const codeLifetime = 10 * time.Minute
 
+// refreshLifetime is how long a refresh token stays redeemable. Each use
+// rotates it, so an active session never hits this.
+const refreshLifetime = 24 * time.Hour
+
 // authCode is everything /authorize decided, held until the client redeems
-// the code at /token.
+// the code at /token. A refresh token holds the same grant, minus the nonce
+// and PKCE challenge, so later tokens can be minted from it.
 type authCode struct {
 	clientID        string
 	redirectURI     string // as sent to /authorize; empty when omitted
@@ -24,16 +29,17 @@ type authCode struct {
 	expiresAt       time.Time
 }
 
-// codeStore holds issued authorization codes in memory. Codes are single use
-// and short-lived, so a restart simply invalidates outstanding ones.
+// codeStore holds issued authorization codes, or refresh tokens, in memory.
+// Both are single use, so a restart simply invalidates outstanding ones.
 type codeStore struct {
-	mu    sync.Mutex
-	codes map[string]*authCode
-	now   func() time.Time
+	mu       sync.Mutex
+	codes    map[string]*authCode
+	lifetime time.Duration
+	now      func() time.Time
 }
 
-func newCodeStore() *codeStore {
-	return &codeStore{codes: map[string]*authCode{}, now: time.Now}
+func newCodeStore(lifetime time.Duration) *codeStore {
+	return &codeStore{codes: map[string]*authCode{}, lifetime: lifetime, now: time.Now}
 }
 
 // issue stores grant under a fresh random code and returns the code. Expired
@@ -48,7 +54,7 @@ func (cs *codeStore) issue(grant *authCode) string {
 			delete(cs.codes, c)
 		}
 	}
-	grant.expiresAt = now.Add(codeLifetime)
+	grant.expiresAt = now.Add(cs.lifetime)
 	cs.codes[code] = grant
 	return code
 }

@@ -74,12 +74,13 @@ func testServerWith(t *testing.T, mutate func(*config.Config)) (*httptest.Server
 }
 
 type tokenResponse struct {
-	AccessToken string `json:"access_token"`
-	TokenType   string `json:"token_type"`
-	ExpiresIn   int    `json:"expires_in"`
-	Scope       string `json:"scope"`
-	IDToken     string `json:"id_token"`
-	Error       string `json:"error"`
+	AccessToken  string `json:"access_token"`
+	TokenType    string `json:"token_type"`
+	ExpiresIn    int    `json:"expires_in"`
+	Scope        string `json:"scope"`
+	IDToken      string `json:"id_token"`
+	RefreshToken string `json:"refresh_token"`
+	Error        string `json:"error"`
 }
 
 func requestToken(t *testing.T, ts *httptest.Server, form url.Values, basicAuth [2]string) (*http.Response, tokenResponse) {
@@ -384,8 +385,11 @@ func TestOpenIDConfiguration(t *testing.T) {
 	if doc["authorization_endpoint"] != "http://tokendock.test/authorize" {
 		t.Errorf("authorization_endpoint = %v", doc["authorization_endpoint"])
 	}
+	if doc["userinfo_endpoint"] != "http://tokendock.test/userinfo" {
+		t.Errorf("userinfo_endpoint = %v", doc["userinfo_endpoint"])
+	}
 	for field, want := range map[string][]string{
-		"grant_types_supported":                 {"client_credentials", "urn:ietf:params:oauth:grant-type:token-exchange", "authorization_code"},
+		"grant_types_supported":                 {"client_credentials", "urn:ietf:params:oauth:grant-type:token-exchange", "authorization_code", "refresh_token"},
 		"response_types_supported":              {"code"},
 		"response_modes_supported":              {"query"},
 		"subject_types_supported":               {"public"},

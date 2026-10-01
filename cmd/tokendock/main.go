@@ -71,6 +71,7 @@ func logStartup(cfg *config.Config, key *keys.Key) {
 	log.Printf("issuer: %s", cfg.Issuer)
 	log.Printf("token endpoint: %s/token", cfg.Issuer)
 	log.Printf("authorization endpoint: %s/authorize", cfg.Issuer)
+	log.Printf("userinfo endpoint: %s/userinfo", cfg.Issuer)
 	log.Printf("jwks: %s/.well-known/jwks.json", cfg.Issuer)
 	if cfg.SigningKey != "" {
 		log.Printf("signing key: %s (kid %s)", cfg.SigningKey, key.KID)
