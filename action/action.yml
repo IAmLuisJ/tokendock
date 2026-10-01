@@ -2,8 +2,9 @@ name: TokenDock
 description: >-
   Start TokenDock, a fake OAuth 2.0 Authorization Server for CI. Issues
   RS256-signed JWTs (RFC 9068 at+jwt by default) via the client credentials,
-  authorization code (PKCE, OIDC ID tokens), and token exchange grants, with
-  JWKS and OIDC discovery endpoints for the app under test to validate them.
+  authorization code (PKCE, OIDC ID tokens), token exchange, and JWT bearer
+  grants, with JWKS and OIDC discovery endpoints for the app under test to
+  validate them.
 branding:
   icon: anchor
   color: blue

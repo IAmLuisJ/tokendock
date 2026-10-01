@@ -1,15 +1,15 @@
 # TokenDock
 
 A fake OAuth 2.0 Authorization Server for CI. TokenDock issues RS256-signed JWTs
-via the client credentials, authorization code, and token exchange grants, and
-serves the JWKS + OIDC discovery endpoints your application already uses to
+via the client credentials, authorization code, token exchange, and JWT bearer
+grants, and serves the JWKS + OIDC discovery endpoints your application already uses to
 validate tokens — so JWT-protected flows, browser logins included, work in CI
 without reaching your real authorization server, and without any test-specific
 code in your app.
 
 - **Tiny and instant**: single static Go binary in a distroless image (~4MB, starts in milliseconds)
 - **Zero-config**: starts with a built-in demo client; add real clients via env vars or YAML
-- **Standards-shaped**: `/token`, `/authorize`, `/.well-known/openid-configuration`, `/.well-known/jwks.json`, PKCE, OIDC ID tokens, RFC 9068 `at+jwt` access tokens, RFC 8693 token exchange, RFC 6749 errors
+- **Standards-shaped**: `/token`, `/authorize`, `/.well-known/openid-configuration`, `/.well-known/jwks.json`, PKCE, OIDC ID tokens, RFC 9068 `at+jwt` access tokens, RFC 8693 token exchange, RFC 7523 JWT bearer and client assertions, RFC 6749 errors
 
 > ⚠️ TokenDock is a **test double**. It signs whatever your config says with an
 > ephemeral key. Never expose it outside CI or local development.
@@ -163,7 +163,7 @@ checklist.
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /token` | Client credentials, authorization code, and token exchange (RFC 8693) grants. Client auth via HTTP Basic or form body (`client_id`/`client_secret`). |
+| `POST /token` | Client credentials, authorization code, token exchange (RFC 8693), and JWT bearer (RFC 7523) grants. Client auth via HTTP Basic, form body (`client_id`/`client_secret`), or a JWT client assertion. |
 | `GET`/`POST /authorize` | Authorization code flow: redirects straight back with a code, or shows a login page with `TOKENDOCK_INTERACTIVE_LOGIN=true`. |
 | `GET /.well-known/openid-configuration` | OIDC discovery document |
 | `GET /.well-known/jwks.json` | Public signing keys |
@@ -243,7 +243,33 @@ hand-crafted tokens freely. The issued token carries the subject's `sub` and
 custom claims (subject wins over client-configured claims on conflict), takes
 audience/scopes/lifetime from the requesting client (request `audience` and
 `scope` params override), and gets `act: {"sub": …}` when an `actor_token` is
-supplied. Any configured client may use either grant.
+supplied. Any configured client may use any grant.
+
+### JWT bearer (RFC 7523)
+
+Trade an assertion JWT for an access token — the grant behind Spring's
+`JwtBearerOAuth2AuthorizedClientProvider` and on-behalf-of flows:
+
+```sh
+curl -u my-service:ci-secret \
+  -d grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer \
+  -d assertion="$USER_TOKEN" \
+  http://localhost:8080/token
+```
+
+Same leniency as token exchange: the `assertion` must be a **well-formed** JWT
+containing `sub`, but its signature and claims are not verified. The issued
+token carries the assertion's `sub` and custom claims (assertion wins over
+client-configured claims) and takes audience, scopes, and lifetime from the
+requesting client.
+
+Clients can also **authenticate with a JWT** instead of a secret, on any
+grant: send `client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer`
+and a `client_assertion` whose `sub` is the client ID (`private_key_jwt` /
+`client_secret_jwt`). The assertion's signature isn't verified and the
+client's configured secret isn't checked, so the app's real key never enters
+CI. See [JWT bearer and client assertions](docs/configuration.md#jwt-bearer-and-client-assertions)
+for every rule.
 
 ## TokenDock vs. mock-oauth2-server
 
@@ -255,7 +281,7 @@ plenty of teams. An honest comparison:
 |---|---|---|
 | Runtime & image | ~4 MB static Go binary | ~200 MB JVM image (Kotlin) |
 | Cold start | Milliseconds | Seconds (JVM startup) |
-| Grant types | Client credentials, authorization code (PKCE, OIDC ID tokens), token exchange (RFC 8693) | Authorization code, token exchange, JWT bearer, refresh & more |
+| Grant types | Client credentials, authorization code (PKCE, OIDC ID tokens), token exchange (RFC 8693), JWT bearer (RFC 7523) | Authorization code, token exchange, JWT bearer, refresh & more |
 | Interactive login page | Opt-in — by default `/authorize` approves instantly | Yes — for browser-driven E2E tests |
 | Embed in test code | Container only | JVM library, JUnit-friendly |
 | Issuers | One per container | Multiple per instance |
@@ -267,9 +293,9 @@ browser logins that only need to get through the redirect, want a service
 container that's ready before your app finishes booting, aren't on the JVM, or
 would rather declare clients in a few env vars than maintain config code.
 
-**Choose mock-oauth2-server when** you need refresh tokens, a userinfo
-endpoint, or the JWT bearer grant, you want the server embedded in your JUnit
-lifecycle, or you need several issuers from one instance.
+**Choose mock-oauth2-server when** you need refresh tokens or a userinfo
+endpoint, you want the server embedded in your JUnit lifecycle, or you need
+several issuers from one instance.
 
 ## Development
 
