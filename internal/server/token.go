@@ -20,15 +20,8 @@ func (s *server) handleToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	clientID, clientSecret, ok := r.BasicAuth()
+	client, ok := s.authenticateClient(w, r)
 	if !ok {
-		clientID = r.PostFormValue("client_id")
-		clientSecret = r.PostFormValue("client_secret")
-	}
-	client := s.authenticate(clientID, clientSecret)
-	if client == nil {
-		w.Header().Set("WWW-Authenticate", `Basic realm="tokendock"`)
-		writeOAuthError(w, http.StatusUnauthorized, "invalid_client", "client authentication failed")
 		return
 	}
 
@@ -85,6 +78,31 @@ func writeTokenResponse(w http.ResponseWriter, token string, lifetime int, scope
 		body[k] = v
 	}
 	writeJSON(w, http.StatusOK, body)
+}
+
+// authenticateClient identifies the requesting client from a JWT client
+// assertion, HTTP Basic, or form-body credentials. On failure it writes the
+// error response and returns false.
+func (s *server) authenticateClient(w http.ResponseWriter, r *http.Request) (*config.Client, bool) {
+	if r.PostFormValue("client_assertion") != "" || r.PostFormValue("client_assertion_type") != "" {
+		return s.authenticateAssertion(w, r)
+	}
+	clientID, clientSecret, ok := r.BasicAuth()
+	if !ok {
+		clientID = r.PostFormValue("client_id")
+		clientSecret = r.PostFormValue("client_secret")
+	}
+	client := s.authenticate(clientID, clientSecret)
+	if client == nil {
+		writeInvalidClient(w, "client authentication failed")
+		return nil, false
+	}
+	return client, true
+}
+
+func writeInvalidClient(w http.ResponseWriter, description string) {
+	w.Header().Set("WWW-Authenticate", `Basic realm="tokendock"`)
+	writeOAuthError(w, http.StatusUnauthorized, "invalid_client", description)
 }
 
 func (s *server) authenticate(clientID, clientSecret string) *config.Client {

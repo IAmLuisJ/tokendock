@@ -168,3 +168,107 @@ func TestJWTBearerStillRequiresClientAuth(t *testing.T) {
 		t.Errorf("status = %d, error = %q", resp.StatusCode, body.Error)
 	}
 }
+
+const clientAssertionType = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+
+// clientAssertionForm is a client_credentials request authenticated only by a
+// JWT client assertion naming my-service, as private_key_jwt clients send it.
+func clientAssertionForm(t *testing.T) url.Values {
+	t.Helper()
+	return url.Values{
+		"grant_type":            {"client_credentials"},
+		"client_assertion_type": {clientAssertionType},
+		"client_assertion": {makeJWT(t, jwt.MapClaims{
+			"iss": "my-service",
+			"sub": "my-service",
+			"aud": "http://tokendock.test/token",
+			"exp": 9999999999,
+		})},
+	}
+}
+
+func TestClientAssertionAuthenticatesWithoutCheckingSecret(t *testing.T) {
+	ts, key, _ := testServer(t)
+	// my-service has a client_secret configured; the assertion alone suffices.
+	resp, body := requestToken(t, ts, clientAssertionForm(t), [2]string{})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, body = %+v", resp.StatusCode, body)
+	}
+	claims := parseToken(t, body.AccessToken, key)
+	if claims["sub"] != "my-service" || claims["aud"] != "my-api" {
+		t.Errorf("sub = %v, aud = %v, want my-service's subject and audience", claims["sub"], claims["aud"])
+	}
+}
+
+func TestClientAssertionWithMatchingClientID(t *testing.T) {
+	ts, _, _ := testServer(t)
+	form := clientAssertionForm(t)
+	form.Set("client_id", "my-service")
+	resp, body := requestToken(t, ts, form, [2]string{})
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, body = %+v", resp.StatusCode, body)
+	}
+}
+
+func TestClientAssertionRejectedAsInvalidClient(t *testing.T) {
+	cases := map[string]func(url.Values){
+		"unknown sub": func(f url.Values) {
+			f.Set("client_assertion", makeJWT(t, jwt.MapClaims{"sub": "nobody"}))
+		},
+		"malformed assertion": func(f url.Values) { f.Set("client_assertion", "garbage") },
+		"assertion without sub": func(f url.Values) {
+			f.Set("client_assertion", makeJWT(t, jwt.MapClaims{"iss": "my-service"}))
+		},
+		"missing assertion":        func(f url.Values) { f.Del("client_assertion") },
+		"wrong assertion type":     func(f url.Values) { f.Set("client_assertion_type", "urn:example:saml") },
+		"missing assertion type":   func(f url.Values) { f.Del("client_assertion_type") },
+		"mismatched client_id":     func(f url.Values) { f.Set("client_id", "open-client") },
+		"assertion for secretless": func(f url.Values) { f.Set("client_id", "secretless") },
+	}
+	ts, _, _ := testServer(t)
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			form := clientAssertionForm(t)
+			mutate(form)
+			resp, body := requestToken(t, ts, form, [2]string{})
+			if resp.StatusCode != http.StatusUnauthorized || body.Error != "invalid_client" {
+				t.Errorf("status = %d, error = %q, want 401 invalid_client", resp.StatusCode, body.Error)
+			}
+		})
+	}
+}
+
+func TestClientAssertionWithAnotherAuthMethodIsInvalidRequest(t *testing.T) {
+	ts, _, _ := testServer(t)
+	t.Run("basic auth", func(t *testing.T) {
+		resp, body := requestToken(t, ts, clientAssertionForm(t), [2]string{"my-service", "ci-secret"})
+		if resp.StatusCode != http.StatusBadRequest || body.Error != "invalid_request" {
+			t.Errorf("status = %d, error = %q, want 400 invalid_request", resp.StatusCode, body.Error)
+		}
+	})
+	t.Run("client_secret", func(t *testing.T) {
+		form := clientAssertionForm(t)
+		form.Set("client_secret", "ci-secret")
+		resp, body := requestToken(t, ts, form, [2]string{})
+		if resp.StatusCode != http.StatusBadRequest || body.Error != "invalid_request" {
+			t.Errorf("status = %d, error = %q, want 400 invalid_request", resp.StatusCode, body.Error)
+		}
+	})
+}
+
+// TestJWTBearerWithClientAssertion is the on-behalf-of shape: the user's token
+// is the grant's assertion and the client authenticates with its own JWT.
+func TestJWTBearerWithClientAssertion(t *testing.T) {
+	ts, key, _ := testServer(t)
+	form := clientAssertionForm(t)
+	form.Set("grant_type", jwtBearerGrant)
+	form.Set("assertion", makeJWT(t, jwt.MapClaims{"sub": "alice"}))
+	resp, body := requestToken(t, ts, form, [2]string{})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, body = %+v", resp.StatusCode, body)
+	}
+	claims := parseToken(t, body.AccessToken, key)
+	if claims["sub"] != "alice" || claims["aud"] != "my-api" {
+		t.Errorf("sub = %v, aud = %v, want alice for my-api", claims["sub"], claims["aud"])
+	}
+}
