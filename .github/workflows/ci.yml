@@ -97,6 +97,42 @@ jobs:
             --arg iss "${{ steps.tokendock.outputs.issuer }}" \
             '.iss == $iss and .sub == "alice" and .aud == "ci-client" and .nonce == "n-0S6"'
 
+      - name: Refresh the session and read userinfo
+        run: |
+          set -euo pipefail
+          redirect_uri=http://localhost:3000/callback
+          location=$(curl -s -o /dev/null -w '%{redirect_url}' -G \
+            --data-urlencode response_type=code \
+            --data-urlencode client_id=ci-client \
+            --data-urlencode "redirect_uri=${redirect_uri}" \
+            --data-urlencode 'scope=openid read offline_access' \
+            --data-urlencode login_hint=alice \
+            "${{ steps.tokendock.outputs.authorization-endpoint }}")
+          code=$(printf '%s' "$location" | sed -n 's/.*[?&]code=\([^&]*\).*/\1/p')
+          test -n "$code"
+
+          resp=$(curl -sf -u ci-client:ci-secret \
+            -d grant_type=authorization_code \
+            --data-urlencode "code=${code}" \
+            --data-urlencode "redirect_uri=${redirect_uri}" \
+            "${{ steps.tokendock.outputs.token-endpoint }}")
+          first=$(echo "$resp" | jq -er .refresh_token)
+
+          resp=$(curl -sf -u ci-client:ci-secret \
+            -d grant_type=refresh_token --data-urlencode "refresh_token=${first}" \
+            "${{ steps.tokendock.outputs.token-endpoint }}")
+          echo "$resp" | jq -e --arg first "$first" '.refresh_token != $first and (.id_token | length > 0)'
+          access_token=$(echo "$resp" | jq -r .access_token)
+
+          # Refresh tokens rotate: the first one is spent.
+          status=$(curl -s -o /dev/null -w '%{http_code}' -u ci-client:ci-secret \
+            -d grant_type=refresh_token --data-urlencode "refresh_token=${first}" \
+            "${{ steps.tokendock.outputs.token-endpoint }}")
+          test "$status" = 400
+
+          curl -sf -H "Authorization: Bearer ${access_token}" \
+            "${{ steps.tokendock.outputs.userinfo-endpoint }}" | jq -e '.sub == "alice"'
+
       - name: Run the JWT bearer grant with a client assertion
         run: |
           set -euo pipefail

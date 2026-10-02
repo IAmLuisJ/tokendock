@@ -285,7 +285,8 @@ export OIDC_CLIENT_SECRET=anything
 Spring discovers `/authorize`, `/token`, and the JWKS from the issuer and
 validates the ID token's `iss`, `aud`, and `nonce` — all of which TokenDock
 issues. Keep `openid` in the scopes: without it Spring falls back to plain
-OAuth2 login, which requires a userinfo endpoint TokenDock doesn't serve.
+OAuth2 login against `/userinfo`, which then returns only `sub` (set the
+provider's `user-name-attribute: sub`).
 
 **When the app runs in a container and the browser doesn't**, they need
 different hosts for the same TokenDock: the browser follows the authorization

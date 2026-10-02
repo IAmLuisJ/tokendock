@@ -1,15 +1,16 @@
 # TokenDock
 
 A fake OAuth 2.0 Authorization Server for CI. TokenDock issues RS256-signed JWTs
-via the client credentials, authorization code, token exchange, and JWT bearer
-grants, and serves the JWKS + OIDC discovery endpoints your application already uses to
-validate tokens — so JWT-protected flows, browser logins included, work in CI
+via the client credentials, authorization code, refresh token, token exchange,
+and JWT bearer grants, and serves the JWKS, userinfo, and OIDC discovery
+endpoints your application already uses to validate tokens — so JWT-protected
+flows, browser logins included, work in CI
 without reaching your real authorization server, and without any test-specific
 code in your app.
 
 - **Tiny and instant**: single static Go binary in a distroless image (~4MB, starts in milliseconds)
 - **Zero-config**: starts with a built-in demo client; add real clients via env vars or YAML
-- **Standards-shaped**: `/token`, `/authorize`, `/.well-known/openid-configuration`, `/.well-known/jwks.json`, PKCE, OIDC ID tokens, RFC 9068 `at+jwt` access tokens, RFC 8693 token exchange, RFC 7523 JWT bearer and client assertions, RFC 6749 errors
+- **Standards-shaped**: `/token`, `/authorize`, `/userinfo`, `/.well-known/openid-configuration`, `/.well-known/jwks.json`, PKCE, OIDC ID tokens, rotating refresh tokens, RFC 9068 `at+jwt` access tokens, RFC 8693 token exchange, RFC 7523 JWT bearer and client assertions, RFC 6749 errors
 
 > ⚠️ TokenDock is a **test double**. It signs whatever your config says with an
 > ephemeral key. Never expose it outside CI or local development.
@@ -72,7 +73,8 @@ steps:
 ```
 
 The action starts the container, waits for it to be healthy, and exposes
-`issuer`, `token-endpoint`, `authorization-endpoint`, and `jwks-uri` outputs.
+`issuer`, `token-endpoint`, `authorization-endpoint`, `userinfo-endpoint`, and
+`jwks-uri` outputs.
 
 ## Docker Compose
 
@@ -163,8 +165,9 @@ checklist.
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /token` | Client credentials, authorization code, token exchange (RFC 8693), and JWT bearer (RFC 7523) grants. Client auth via HTTP Basic, form body (`client_id`/`client_secret`), or a JWT client assertion. |
+| `POST /token` | Client credentials, authorization code, refresh token, token exchange (RFC 8693), and JWT bearer (RFC 7523) grants. Client auth via HTTP Basic, form body (`client_id`/`client_secret`), or a JWT client assertion. |
 | `GET`/`POST /authorize` | Authorization code flow: redirects straight back with a code, or shows a login page with `TOKENDOCK_INTERACTIVE_LOGIN=true`. |
+| `GET`/`POST /userinfo` | OIDC userinfo: `sub`, plus the token's custom claims when it has the `openid` scope. Takes a TokenDock-issued `Authorization: Bearer` token. |
 | `GET /.well-known/openid-configuration` | OIDC discovery document |
 | `GET /.well-known/jwks.json` | Public signing keys |
 | `GET /health` | Readiness probe (also `tokendock -healthcheck` for Docker HEALTHCHECK) |
@@ -173,7 +176,7 @@ checklist.
 Issued tokens are RS256 JWTs with the RFC 9068 `typ: at+jwt` header, `kid`, and
 `iss`, `sub`, `aud`, `exp`, `iat`, `jti`, `scope`, plus any custom claims from
 the client's config. Authorization code requests with the `openid` scope also
-get an OIDC `id_token`. Errors follow RFC 6749
+get an OIDC `id_token`, and with `offline_access` a `refresh_token`. Errors follow RFC 6749
 (`invalid_client`, `invalid_scope`, `unsupported_grant_type`, `invalid_request`,
 `invalid_grant`).
 
@@ -215,6 +218,15 @@ curl -u tokendock:tokendock-secret -d grant_type=authorization_code \
 - **Login page:** `TOKENDOCK_INTERACTIVE_LOGIN=true` makes `/authorize` show a
   one-field form where the test types the subject — for browser tests that
   switch between users.
+- **`offline_access` scope:** the response adds a `refresh_token`. Redeem it
+  with `grant_type=refresh_token` for fresh tokens (and a new `id_token` when
+  `openid` was granted). Refresh tokens **rotate**: each use returns a new one
+  and spends the old, so reusing it is `invalid_grant`. An optional `scope`
+  narrows the new access token to a subset of the original. Unused refresh
+  tokens expire after 24 hours.
+- **Userinfo:** `/userinfo` (advertised in discovery) returns `sub` for any
+  valid TokenDock access token, plus the client's custom `claims` when the
+  token has the `openid` scope.
 
 The browser has to reach the issuer URL too. See
 [Authorization code and browser login](docs/configuration.md#authorization-code-and-browser-login)
@@ -281,7 +293,7 @@ plenty of teams. An honest comparison:
 |---|---|---|
 | Runtime & image | ~4 MB static Go binary | ~200 MB JVM image (Kotlin) |
 | Cold start | Milliseconds | Seconds (JVM startup) |
-| Grant types | Client credentials, authorization code (PKCE, OIDC ID tokens), token exchange (RFC 8693), JWT bearer (RFC 7523) | Authorization code, token exchange, JWT bearer, refresh & more |
+| Grant types | Client credentials, authorization code (PKCE, OIDC ID tokens), refresh token, token exchange (RFC 8693), JWT bearer (RFC 7523) | Authorization code, token exchange, JWT bearer, refresh & more |
 | Interactive login page | Opt-in — by default `/authorize` approves instantly | Yes — for browser-driven E2E tests |
 | Embed in test code | Container only | JVM library, JUnit-friendly |
 | Issuers | One per container | Multiple per instance |
@@ -293,9 +305,8 @@ browser logins that only need to get through the redirect, want a service
 container that's ready before your app finishes booting, aren't on the JVM, or
 would rather declare clients in a few env vars than maintain config code.
 
-**Choose mock-oauth2-server when** you need refresh tokens or a userinfo
-endpoint, you want the server embedded in your JUnit lifecycle, or you need
-several issuers from one instance.
+**Choose mock-oauth2-server when** you want the server embedded in your JUnit
+lifecycle, or you need several issuers from one instance.
 
 ## Development
 

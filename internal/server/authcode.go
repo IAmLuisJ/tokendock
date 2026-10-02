@@ -16,7 +16,7 @@ import (
 
 // handleAuthorizationCode redeems a code from /authorize (RFC 6749 §4.1.3)
 // for an access token, plus an OpenID Connect ID token when the openid scope
-// was granted.
+// was granted and a refresh token when offline_access was.
 func (s *server) handleAuthorizationCode(w http.ResponseWriter, r *http.Request, client *config.Client) {
 	code := r.PostFormValue("code")
 	if code == "" {
@@ -52,14 +52,17 @@ func (s *server) handleAuthorizationCode(w http.ResponseWriter, r *http.Request,
 		writeOAuthError(w, http.StatusInternalServerError, "server_error", "failed to sign token")
 		return
 	}
-	var extra map[string]any
+	extra := map[string]any{}
 	if slices.Contains(grant.scopes, "openid") {
 		idToken, err := s.mintIDToken(grant, client)
 		if err != nil {
 			writeOAuthError(w, http.StatusInternalServerError, "server_error", "failed to sign ID token")
 			return
 		}
-		extra = map[string]any{"id_token": idToken}
+		extra["id_token"] = idToken
+	}
+	if slices.Contains(grant.scopes, "offline_access") {
+		extra["refresh_token"] = s.issueRefreshToken(grant)
 	}
 	writeTokenResponse(w, token, client.TokenLifetime, grant.scopes, extra)
 }

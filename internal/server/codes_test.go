@@ -9,7 +9,7 @@ import (
 // storeWithClock returns a code store whose clock the test moves by hand.
 func storeWithClock() (*codeStore, *time.Time) {
 	now := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
-	cs := newCodeStore()
+	cs := newCodeStore(codeLifetime)
 	cs.now = func() time.Time { return now }
 	return cs, &now
 }
@@ -40,6 +40,16 @@ func TestCodeStoreCodesExpireAfterLifetime(t *testing.T) {
 	}
 }
 
+func TestCodeStoreUsesItsOwnLifetime(t *testing.T) {
+	cs, now := storeWithClock()
+	cs.lifetime = refreshLifetime
+	token := cs.issue(&authCode{clientID: "web-app"})
+	*now = now.Add(codeLifetime + time.Hour)
+	if _, ok := cs.redeem(token); !ok {
+		t.Error("refresh token expired at the code lifetime, want the store's lifetime")
+	}
+}
+
 func TestCodeStoreIssueSweepsExpiredCodes(t *testing.T) {
 	cs, now := storeWithClock()
 	cs.issue(&authCode{clientID: "stale"})
@@ -64,7 +74,7 @@ func TestCodeStoreCodesAreDistinct(t *testing.T) {
 // The store is shared by every request, so browsers and backends hit it
 // concurrently; run with -race to catch unguarded access.
 func TestCodeStoreConcurrentUse(t *testing.T) {
-	cs := newCodeStore()
+	cs := newCodeStore(codeLifetime)
 	var wg sync.WaitGroup
 	for range 50 {
 		wg.Add(1)

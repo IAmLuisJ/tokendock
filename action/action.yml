@@ -2,9 +2,9 @@ name: TokenDock
 description: >-
   Start TokenDock, a fake OAuth 2.0 Authorization Server for CI. Issues
   RS256-signed JWTs (RFC 9068 at+jwt by default) via the client credentials,
-  authorization code (PKCE, OIDC ID tokens), token exchange, and JWT bearer
-  grants, with JWKS and OIDC discovery endpoints for the app under test to
-  validate them.
+  authorization code (PKCE, OIDC ID tokens), refresh token, token exchange,
+  and JWT bearer grants, with JWKS, userinfo, and OIDC discovery endpoints for
+  the app under test to validate and use them.
 branding:
   icon: anchor
   color: blue
@@ -60,6 +60,9 @@ outputs:
   authorization-endpoint:
     description: OAuth authorization endpoint URL (authorization code flow)
     value: ${{ steps.start.outputs.authorization-endpoint }}
+  userinfo-endpoint:
+    description: OpenID Connect userinfo endpoint URL
+    value: ${{ steps.start.outputs.userinfo-endpoint }}
   jwks-uri:
     description: JWKS URL for validating issued tokens
     value: ${{ steps.start.outputs.jwks-uri }}
@@ -135,6 +138,7 @@ runs:
               echo "issuer=${issuer}"
               echo "token-endpoint=${issuer}/token"
               echo "authorization-endpoint=${issuer}/authorize"
+              echo "userinfo-endpoint=${issuer}/userinfo"
               echo "jwks-uri=${issuer}/.well-known/jwks.json"
             } >> "$GITHUB_OUTPUT"
             exit 0
