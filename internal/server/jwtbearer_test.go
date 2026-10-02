@@ -64,11 +64,12 @@ func TestJWTBearerCarriesSubjectAndMergesClaims(t *testing.T) {
 	}
 }
 
-func TestJWTBearerResponseHasNoIssuedTokenType(t *testing.T) {
+func TestJWTBearerResponseHasNoIssuedOrRefreshToken(t *testing.T) {
 	ts, _, _ := testServer(t)
 	form := url.Values{
 		"grant_type":    {jwtBearerGrant},
 		"assertion":     {makeJWT(t, jwt.MapClaims{"sub": "alice"})},
+		"scope":         {"read offline_access"},
 		"client_id":     {"my-service"},
 		"client_secret": {"ci-secret"},
 	}
@@ -86,6 +87,9 @@ func TestJWTBearerResponseHasNoIssuedTokenType(t *testing.T) {
 	}
 	if _, present := full["issued_token_type"]; present {
 		t.Errorf("issued_token_type = %v, want absent (token exchange only)", full["issued_token_type"])
+	}
+	if _, present := full["refresh_token"]; present {
+		t.Error("refresh_token present; only the authorization code grant issues one")
 	}
 	if full["token_type"] != "Bearer" {
 		t.Errorf("token_type = %v", full["token_type"])

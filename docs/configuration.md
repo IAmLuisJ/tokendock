@@ -328,7 +328,8 @@ The issued token's `sub` is the assertion's. Its custom claims are the
 client's configured `claims` with the assertion's own claims on top, so the
 assertion wins on conflict. Registered claims (`iss`, `aud`, `exp`, `iat`,
 `nbf`, `jti`, `scope`, `act`) are never copied. Audience, lifetime, and
-default scopes come from the client. The response has no `issued_token_type`.
+default scopes come from the client. The response has no `issued_token_type`,
+and never a `refresh_token`, even with `offline_access`.
 
 A missing `assertion` is `invalid_request`. An unparseable assertion, or one
 without `sub`, is `invalid_grant`.

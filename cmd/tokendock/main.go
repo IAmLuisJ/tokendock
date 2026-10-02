@@ -1,7 +1,7 @@
 // TokenDock is a fake OAuth 2.0 Authorization Server for CI: it issues
-// RS256-signed JWTs via the client credentials, authorization code, token
-// exchange, and JWT bearer grants and serves the JWKS and OIDC discovery
-// documents apps need to validate them.
+// RS256-signed JWTs via the client credentials, authorization code, refresh
+// token, token exchange, and JWT bearer grants and serves the JWKS and OIDC
+// discovery documents apps need to validate them.
 package main
 
 import (
