@@ -53,23 +53,12 @@ func (s *server) handleTokenExchange(w http.ResponseWriter, r *http.Request, cli
 		audience = client.Audience
 	}
 
-	// Client's configured claims first, subject's custom claims win.
-	merged := map[string]any{}
-	for k, v := range client.Claims {
-		merged[k] = v
-	}
-	for k, v := range subjectClaims {
-		if !registeredClaims[k] {
-			merged[k] = v
-		}
-	}
-
 	token, err := s.mintToken(tokenSpec{
 		subject:  subjectSub,
 		audience: audience,
 		lifetime: client.TokenLifetime,
 		scopes:   scopes,
-		claims:   merged,
+		claims:   overlayClaims(client.Claims, subjectClaims),
 		act:      act,
 	})
 	if err != nil {
@@ -79,6 +68,22 @@ func (s *server) handleTokenExchange(w http.ResponseWriter, r *http.Request, cli
 	writeTokenResponse(w, token, client.TokenLifetime, scopes, map[string]any{
 		"issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
 	})
+}
+
+// overlayClaims merges a presented token's custom claims over a client's
+// configured claims; the presented token wins. Registered claims are skipped
+// because the server stamps them.
+func overlayClaims(base map[string]any, overlay jwt.MapClaims) map[string]any {
+	merged := map[string]any{}
+	for k, v := range base {
+		merged[k] = v
+	}
+	for k, v := range overlay {
+		if !registeredClaims[k] {
+			merged[k] = v
+		}
+	}
+	return merged
 }
 
 // parseUnverified decodes a JWT without checking its signature and returns

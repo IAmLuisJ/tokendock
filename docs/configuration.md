@@ -298,6 +298,72 @@ resolve for both:
   and override only the app's browser-facing authorization URL — see
   [Pointing your app at TokenDock](system-under-test.md#browser-login-authorization-code).
 
+## JWT bearer and client assertions
+
+RFC 7523 uses JWTs in two places, and TokenDock supports both. Neither needs
+configuration, and both use the token exchange stance: an assertion must be a
+**well-formed JWT containing `sub`**, but its signature, `exp`, `iss`, and
+`aud` are not checked. Sign assertions with any key, or none that TokenDock
+knows.
+
+### The JWT bearer grant
+
+```sh
+curl -u my-service:ci-secret \
+  -d grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer \
+  -d assertion="$USER_TOKEN" \
+  -d scope=read \
+  http://localhost:8080/token
+```
+
+| Parameter | Rule |
+|---|---|
+| `assertion` | Required. Any well-formed JWT with `sub`. |
+| `scope` | Same rules as every grant; see [per-client fields](#per-client-fields). |
+
+Anything else (`requested_token_use`, …) is accepted and ignored. Client
+authentication is required, as for every grant.
+
+The issued token's `sub` is the assertion's. Its custom claims are the
+client's configured `claims` with the assertion's own claims on top, so the
+assertion wins on conflict. Registered claims (`iss`, `aud`, `exp`, `iat`,
+`nbf`, `jti`, `scope`, `act`) are never copied. Audience, lifetime, and
+default scopes come from the client. The response has no `issued_token_type`,
+and never a `refresh_token`, even with `offline_access`.
+
+A missing `assertion` is `invalid_request`. An unparseable assertion, or one
+without `sub`, is `invalid_grant`.
+
+### Client assertions (`private_key_jwt`, `client_secret_jwt`)
+
+Instead of a secret, a client may authenticate on **any grant** with a JWT:
+
+```sh
+curl -d grant_type=client_credentials \
+  -d client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer \
+  -d client_assertion="$CLIENT_JWT" \
+  http://localhost:8080/token
+```
+
+- The assertion's `sub` names the client; it must be a configured
+  `client_id`. A `client_id` parameter, if sent, must match it.
+- The configured `client_secret` is **not** checked on this path. The
+  signature isn't verified either, so a well-formed assertion naming a client
+  authenticates as that client. Your app keeps its real key out of CI just as
+  a secretless client keeps its real secret out.
+- Sending an assertion together with HTTP Basic or `client_secret` is
+  `invalid_request`: RFC 6749 allows one authentication method per request.
+- A wrong `client_assertion_type`, a missing or malformed assertion, a
+  mismatched `client_id`, or an unknown `sub` is `invalid_client`.
+
+Discovery advertises `private_key_jwt` and `client_secret_jwt` and every
+signing algorithm the parser accepts (RS, PS, and ES at 256/384/512, EdDSA,
+and HS256/384/512). Libraries that read it pick a supported algorithm on
+their own.
+
+Combine the two for the on-behalf-of shape: the user's token as `assertion`,
+the service's own JWT as `client_assertion`.
+
 ## Secretless clients
 
 A client configured with only a `client_id` accepts **any** secret, including
@@ -309,6 +375,10 @@ enforce it. The startup log flags every secretless client loudly.
 Secretless clients are also how public clients — SPAs and native apps using
 the authorization code flow — work: they send `client_id` alone and prove
 possession of the code with PKCE.
+
+Clients that authenticate with a JWT instead of a secret need no special
+setup either: a [client assertion](#client-assertions-private_key_jwt-client_secret_jwt)
+naming any configured client authenticates it, secret or not.
 
 ## The issuer URL must match
 
