@@ -132,3 +132,44 @@ jobs:
 
           curl -sf -H "Authorization: Bearer ${access_token}" \
             "${{ steps.tokendock.outputs.userinfo-endpoint }}" | jq -e '.sub == "alice"'
+
+      - name: Run the JWT bearer grant with a client assertion
+        run: |
+          set -euo pipefail
+          b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+          b64url_decode() {
+            local s
+            s=$(printf '%s' "$1" | tr '_-' '/+')
+            case $(( ${#s} % 4 )) in 2) s="$s==" ;; 3) s="$s=" ;; esac
+            printf '%s' "$s" | base64 -d
+          }
+          # An HS256 JWT signed with a key TokenDock never sees: it parses
+          # assertions without verifying their signatures.
+          jwt() {
+            local header payload sig
+            header=$(printf '%s' '{"alg":"HS256","typ":"JWT"}' | b64url)
+            payload=$(printf '%s' "$1" | b64url)
+            sig=$(printf '%s' "${header}.${payload}" | openssl dgst -sha256 -hmac not-shared-with-tokendock -binary | b64url)
+            printf '%s.%s.%s' "$header" "$payload" "$sig"
+          }
+
+          token_endpoint="${{ steps.tokendock.outputs.token-endpoint }}"
+          curl -sf "${{ steps.tokendock.outputs.issuer }}/.well-known/openid-configuration" | jq -e \
+            '(.grant_types_supported | index("urn:ietf:params:oauth:grant-type:jwt-bearer")) and
+             (.token_endpoint_auth_methods_supported | index("private_key_jwt"))'
+
+          assertion=$(jwt '{"iss":"https://upstream-idp.example","sub":"alice","roles":["reader"]}')
+          client_assertion=$(jwt "$(jq -cn --arg aud "$token_endpoint" --argjson exp "$(( $(date +%s) + 300 ))" \
+            '{iss: "ci-client", sub: "ci-client", aud: $aud, exp: $exp}')")
+
+          # No -u: the client authenticates with its assertion, not ci-secret.
+          resp=$(curl -sf \
+            -d grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer \
+            --data-urlencode "assertion=${assertion}" \
+            -d client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer \
+            --data-urlencode "client_assertion=${client_assertion}" \
+            -d scope=read \
+            "$token_endpoint")
+          echo "$resp" | jq -e '.token_type == "Bearer" and .scope == "read"'
+          b64url_decode "$(echo "$resp" | jq -r .access_token | cut -d. -f2)" \
+            | jq -e '.sub == "alice" and .aud == "my-api" and .roles == ["reader"]'

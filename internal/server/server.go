@@ -1,6 +1,7 @@
 // Package server implements TokenDock's HTTP endpoints: the token endpoint
-// (client credentials, authorization code, refresh token, token exchange),
-// the authorization endpoint, userinfo, OIDC discovery, JWKS, and health.
+// (client credentials, authorization code, refresh token, token exchange,
+// JWT bearer), the authorization endpoint, userinfo, OIDC discovery, JWKS,
+// and health.
 package server
 
 import (
@@ -47,8 +48,14 @@ func (s *server) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 		"token_endpoint":                        s.cfg.Issuer + "/token",
 		"userinfo_endpoint":                     s.cfg.Issuer + "/userinfo",
 		"jwks_uri":                              s.cfg.Issuer + "/.well-known/jwks.json",
-		"grant_types_supported":                 []string{"client_credentials", grantTypeTokenExchange, "authorization_code", "refresh_token"},
-		"token_endpoint_auth_methods_supported": []string{"client_secret_basic", "client_secret_post", "none"},
+		"grant_types_supported":                 []string{"client_credentials", grantTypeTokenExchange, "authorization_code", "refresh_token", grantTypeJWTBearer},
+		"token_endpoint_auth_methods_supported": []string{"client_secret_basic", "client_secret_post", "none", "private_key_jwt", "client_secret_jwt"},
+		// Every alg the unverified client assertion parser recognizes, except
+		// "none" (OIDC Discovery 1.0 §3 forbids advertising it).
+		"token_endpoint_auth_signing_alg_values_supported": []string{
+			"RS256", "RS384", "RS512", "PS256", "PS384", "PS512",
+			"ES256", "ES384", "ES512", "EdDSA", "HS256", "HS384", "HS512",
+		},
 		"id_token_signing_alg_values_supported": []string{"RS256"},
 		"response_types_supported":              []string{"code"},
 		"response_modes_supported":              []string{"query"},
