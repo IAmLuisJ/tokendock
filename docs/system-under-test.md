@@ -207,8 +207,10 @@ builder.Services
     {
         options.Authority = builder.Configuration["Oidc:Issuer"];
         options.TokenValidationParameters.ValidAudience = "my-api";
-        // TokenDock serves plain HTTP inside the test network:
-        options.RequireHttpsMetadata = builder.Environment.IsProduction();
+        // TokenDock serves plain HTTP inside the test network. Only an explicit
+        // opt-in turns HTTPS metadata off; every other environment keeps it.
+        options.RequireHttpsMetadata =
+            !builder.Configuration.GetValue<bool>("Oidc:AllowHttpMetadata");
     });
 ```
 
@@ -218,7 +220,13 @@ Compose override (double underscore maps to the `:` separator):
   my-app:
     environment:
       Oidc__Issuer: http://tokendock:8080
+      Oidc__AllowHttpMetadata: "true"
 ```
+
+Avoid `RequireHttpsMetadata = builder.Environment.IsProduction()`: it also
+turns HTTPS metadata off in Staging and any other non-Production environment,
+where an attacker on the network could swap the signing keys your app
+downloads.
 
 `JwtBearer` does not check the `typ` header unless you list the types you
 accept, so TokenDock's tokens work unchanged. To require RFC 9068 access
